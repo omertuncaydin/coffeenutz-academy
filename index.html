@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CoffeeNutz Academy Management</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --bg:#f7f2ec; --card:#ffffff; --ink:#2b1d14; --muted:#8a7263;
+    --brand:#6f4e37; --accent:#e07b39; --ok:#2e7d32; --warn:#c62828; --line:#e7dcd2;
+    --chip:#f0e6dc;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  body{margin:0; font-family:-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink)}
+  button{font:inherit; cursor:pointer}
+  .hidden{display:none!important}
+
+  /* Login */
+  #login{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px}
+  .loginCard{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:28px; width:100%; max-width:380px; box-shadow:0 6px 24px rgba(43,29,20,.08)}
+  .loginCard h1{font-size:20px; margin:0 0 4px} .loginCard p{color:var(--muted); margin:0 0 18px; font-size:14px}
+  .loginCard input{width:100%; padding:13px 14px; margin-bottom:10px; border:1px solid var(--line); border-radius:10px; font-size:15px}
+  .btn{display:inline-block; background:var(--brand); color:#fff; border:none; border-radius:10px; padding:13px 18px; font-size:15px; font-weight:600}
+  .btn.full{width:100%} .btn.ghost{background:var(--chip); color:var(--ink)} .btn.small{padding:8px 12px; font-size:13px; border-radius:8px}
+  .btn.accent{background:var(--accent)}
+
+  /* Shell */
+  header{position:sticky; top:0; z-index:10; background:var(--brand); color:#fff; padding:12px 16px; display:flex; align-items:center; gap:10px}
+  header .logo{font-weight:700; font-size:15px} header .sp{flex:1}
+  header .who{font-size:12px; opacity:.85}
+  nav{position:sticky; top:48px; z-index:9; display:flex; background:var(--card); border-bottom:1px solid var(--line)}
+  nav button{flex:1; border:none; background:none; padding:12px 4px; font-size:13px; font-weight:600; color:var(--muted); border-bottom:3px solid transparent}
+  nav button.on{color:var(--brand); border-bottom-color:var(--accent)}
+  main{padding:14px; max-width:900px; margin:0 auto}
+
+  .tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:14px}
+  .tile{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px}
+  .tile .n{font-size:26px; font-weight:800} .tile .l{font-size:12px; color:var(--muted)}
+  .tile.bad .n{color:var(--warn)} .tile.good .n{color:var(--ok)}
+
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:10px}
+  .card h3{margin:0 0 2px; font-size:16px}
+  .row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .chip{background:var(--chip); border-radius:999px; padding:3px 10px; font-size:12px; font-weight:600}
+  .chip.warn{background:#fde3e3; color:var(--warn)} .chip.ok{background:#e2f2e3; color:var(--ok)} .chip.acc{background:#fdeadb; color:#a2551b}
+  .meta{font-size:12px; color:var(--muted)}
+  .pre{white-space:pre-wrap; font-size:13px; background:var(--bg); border-radius:10px; padding:10px; margin:8px 0 0}
+  .sec{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:16px 0 8px; font-weight:700}
+
+  label.f{display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; font-weight:600}
+  select,input[type=date],input[type=text],textarea{width:100%; padding:10px; border:1px solid var(--line); border-radius:10px; font-size:14px; background:#fff}
+  textarea{min-height:70px}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+
+  .bar{height:8px; background:var(--chip); border-radius:99px; overflow:hidden; margin:8px 0 4px}
+  .bar i{display:block; height:100%; background:var(--accent)}
+
+  #toast{position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 18px; border-radius:99px; font-size:14px; opacity:0; transition:.25s; pointer-events:none; z-index:99}
+  #toast.show{opacity:1}
+  .search{width:100%; padding:12px; border:1px solid var(--line); border-radius:12px; font-size:15px; margin-bottom:10px}
+  .filters{display:flex; gap:6px; overflow-x:auto; padding-bottom:6px; margin-bottom:8px}
+  .filters button{white-space:nowrap; border:1px solid var(--line); background:var(--card); border-radius:99px; padding:7px 12px; font-size:13px; font-weight:600; color:var(--muted)}
+  .filters button.on{background:var(--brand); color:#fff; border-color:var(--brand)}
+  .foot{display:flex; gap:8px; margin-top:10px}
+</style>
+</head>
+<body>
+
+<!-- ============ CONFIG: fill these two after Supabase setup ============ -->
+<script>
+  const CONFIG = {
+    SUPABASE_URL: "https://efjvfggwnhqkunjvoyjb.supabase.co",
+    // Paste the PUBLISHABLE key (sb_publishable_...) from Settings > API Keys.
+    // It is browser-safe. Never put an sb_secret_ key here.
+    SUPABASE_ANON_KEY: "sb_publishable_GkkPHLQ8Syldn3sbvt1sDw_vKrBxnfZ",
+    SHEET_LEADS: 291936864962436,
+    SHEET_TRAININGS: 8367277466584964,
+  };
+</script>
+
+<div id="login">
+  <div class="loginCard">
+    <h1>CoffeeNutz Academy Management</h1>
+    <p>Eğitim talepleri + sınıf yönetimi. Giriş yapın.</p>
+    <input id="email" type="email" placeholder="E-posta" autocomplete="username" />
+    <input id="pass" type="password" placeholder="Şifre" autocomplete="current-password" />
+    <button class="btn full" onclick="doLogin()">Giriş</button>
+    <p id="loginMsg" style="color:var(--warn); min-height:18px"></p>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <span class="logo">🐢 Academy Management</span>
+    <span class="sp"></span>
+    <span class="who" id="who"></span>
+    <button class="btn small ghost" onclick="refreshAll()">Yenile</button>
+    <button class="btn small ghost" onclick="doLogout()">Çıkış</button>
+  </header>
+  <nav>
+    <button id="tab-panel" class="on" onclick="show('panel')">Panel</button>
+    <button id="tab-bugun" onclick="show('bugun')">Bugün</button>
+    <button id="tab-pipeline" onclick="show('pipeline')">Pipeline</button>
+    <button id="tab-siniflar" onclick="show('siniflar')">Sınıflar</button>
+  </nav>
+  <main>
+    <div id="v-panel"></div>
+    <div id="v-bugun" class="hidden"></div>
+    <div id="v-pipeline" class="hidden"></div>
+    <div id="v-siniflar" class="hidden"></div>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+let session = null;
+let LEADS = null, TRAIN = null; // raw sheets
+let LC = {}, TC = {};           // column title -> id maps
+let durumFilter = "Hepsi", searchQ = "";
+
+// ---------- auth ----------
+async function doLogin(){
+  const { data, error } = await sb.auth.signInWithPassword({
+    email: document.getElementById("email").value.trim(),
+    password: document.getElementById("pass").value,
+  });
+  if (error){ document.getElementById("loginMsg").textContent = "Giriş başarısız: " + error.message; return; }
+  session = data.session; enter();
+}
+async function doLogout(){ await sb.auth.signOut(); location.reload(); }
+async function boot(){
+  const { data } = await sb.auth.getSession();
+  if (data.session){ session = data.session; enter(); }
+}
+async function enter(){
+  document.getElementById("login").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  document.getElementById("who").textContent = session.user.email;
+  await refreshAll();
+}
+
+// ---------- proxy ----------
+async function api(payload){
+  const r = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/smartsheet-proxy`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + session.access_token,
+      "apikey": CONFIG.SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || j.message || ("HTTP " + r.status));
+  return j;
+}
+
+async function refreshAll(){
+  toast("Yükleniyor...");
+  const [l, t] = await Promise.all([
+    api({ action:"getSheet", sheetId: CONFIG.SHEET_LEADS }),
+    api({ action:"getSheet", sheetId: CONFIG.SHEET_TRAININGS }),
+  ]);
+  LEADS = l; TRAIN = t;
+  LC = {}; l.columns.forEach(c => LC[c.title] = c.id);
+  TC = {}; t.columns.forEach(c => TC[c.title] = c.id);
+  renderAll(); toast("Güncellendi");
+}
+
+// ---------- helpers ----------
+function cell(row, colId){ const c = (row.cells||[]).find(x => x.columnId === colId); return c ? (c.displayValue ?? c.value ?? "") : ""; }
+function rawCell(row, colId){ const c = (row.cells||[]).find(x => x.columnId === colId); return c ? (c.value ?? null) : null; }
+function today(){ return new Date().toISOString().slice(0,10); }
+function fmtTL(n){ return isFinite(n) ? new Intl.NumberFormat("tr-TR").format(n) + " ₺" : "-"; }
+function esc(s){ return String(s??"").replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+function toast(m){ const t = document.getElementById("toast"); t.textContent = m; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"), 1800); }
+function show(v){
+  ["panel","bugun","pipeline","siniflar"].forEach(x => {
+    document.getElementById("v-"+x).classList.toggle("hidden", x!==v);
+    document.getElementById("tab-"+x).classList.toggle("on", x===v);
+  });
+}
+const OPEN_DURUM = ["Yeni Talep","Bilgi Verildi","Düşünüyor","Takipte"];
+function leadRows(){ return (LEADS.rows||[]).filter(r => cell(r, LC["Ad Soyad"])); }
+function isOverdue(r){
+  const d = cell(r, LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"]);
+  return d && d < today() && OPEN_DURUM.includes(cell(r, LC["Durum"]));
+}
+function isDateless(r){
+  const d = cell(r, LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"]);
+  const du = cell(r, LC["Durum"]);
+  return !d && (du === "Düşünüyor" || du === "Takipte");
+}
+function courses(r){
+  return ["Barista Bundle","Barista PRO","Roasting Bundle","Roasting PRO","Sensory Bundle","Sensory PRO","Q Grader"]
+    .filter(t => rawCell(r, LC[t]) === true).join(", ");
+}
+
+// ---------- Panel ----------
+function renderPanel(){
+  const rows = leadRows();
+  const open = rows.filter(r => OPEN_DURUM.includes(cell(r, LC["Durum"])));
+  const overdue = rows.filter(isOverdue), dateless = rows.filter(isDateless);
+  const won = rows.filter(r => cell(r, LC["Durum"]) === "Kayıt Oldu").length;
+
+  const up = (TRAIN.rows||[]).filter(r => cell(r, TC["End date"]) >= today() && cell(r, TC["Status"]) !== "Cancelled" && cell(r, TC["Training"]) !== "TOTAL");
+  let seats = 0, cap = 0, realized = 0;
+  up.forEach(r => { seats += Number(rawCell(r, TC["Regstrd"]))||0; cap += Number(rawCell(r, TC["Cap"]))||0; realized += Number(rawCell(r, TC["Realized Income"]))||0; });
+
+  const byDurum = {}; rows.forEach(r => { const d = cell(r, LC["Durum"]) || "(boş)"; byDurum[d] = (byDurum[d]||0)+1; });
+  const byKaynak = {}; rows.forEach(r => { const k = cell(r, LC["Kaynak*"] ?? LC["Kaynak"]) || "(boş)"; byKaynak[k] = (byKaynak[k]||0)+1; });
+
+  document.getElementById("v-panel").innerHTML = `
+    <div class="tiles">
+      <div class="tile"><div class="n">${open.length}</div><div class="l">Açık lead</div></div>
+      <div class="tile ${overdue.length? "bad":""}"><div class="n">${overdue.length}</div><div class="l">Takibi geçmiş</div></div>
+      <div class="tile ${dateless.length? "bad":""}"><div class="n">${dateless.length}</div><div class="l">Tarihi eksik</div></div>
+      <div class="tile good"><div class="n">${won}</div><div class="l">Kayıt oldu (toplam)</div></div>
+      <div class="tile"><div class="n">${seats}/${cap}</div><div class="l">Yaklaşan sınıflarda koltuk</div></div>
+      <div class="tile good"><div class="n">${fmtTL(realized)}</div><div class="l">Yaklaşan: gerçekleşen gelir</div></div>
+    </div>
+    <div class="card"><h3>Durum dağılımı</h3><div class="row">${Object.entries(byDurum).map(([k,v])=>`<span class="chip">${esc(k)}: ${v}</span>`).join("")}</div></div>
+    <div class="card"><h3>Kaynak dağılımı</h3><div class="row">${Object.entries(byKaynak).map(([k,v])=>`<span class="chip">${esc(k)}: ${v}</span>`).join("")}</div>
+      <p class="meta" style="margin-top:8px">Kaynak = lead bizi İLK nereden keşfetti. Boş olanları ilk temasta doldurun.</p></div>`;
+}
+
+// ---------- Bugün (assistant day view) ----------
+function renderBugun(){
+  const rows = leadRows().filter(r => isOverdue(r) || isDateless(r) ||
+    (cell(r, LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"]) === today()));
+  const el = document.getElementById("v-bugun");
+  if (!rows.length){ el.innerHTML = `<div class="card"><h3>Bugün temiz 🎉</h3><p class="meta">Takibi geçmiş veya bugüne planlı lead yok.</p></div>`; return; }
+  el.innerHTML = rows.map(r => dayCard(r)).join("");
+}
+function dayCard(r){
+  const dateCol = LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"];
+  const d = cell(r, dateCol);
+  const badge = isOverdue(r) ? `<span class="chip warn">GECİKMİŞ: ${esc(d)}</span>` : (d ? `<span class="chip acc">Bugün</span>` : `<span class="chip warn">Tarih yok</span>`);
+  return `<div class="card">
+    <div class="row"><h3>${esc(cell(r, LC["Ad Soyad"]))}</h3>${badge}<span class="chip">${esc(cell(r, LC["Durum"]))}</span></div>
+    <p class="meta">${esc(courses(r))} · GSM: ${esc(cell(r, LC["GSM"])||"-")}</p>
+    <div class="pre">${esc(cell(r, LC["Sıradaki Adımlar"])||"(adım yazılmamış)")}</div>
+    ${cell(r, LC["Sıradaki Aramanın Metni"]) ? `<div class="pre">${esc(cell(r, LC["Sıradaki Aramanın Metni"]))}</div>` : ""}
+    <label class="f">Arama sonucu (Arama Hakkında Notlar'a eklenir)</label>
+    <textarea id="note-${r.id}" placeholder="Görüşmede ne oldu?"></textarea>
+    <div class="grid2">
+      <div><label class="f">Yeni Durum</label>${durumSelect("durum-"+r.id, cell(r, LC["Durum"]))}</div>
+      <div><label class="f">Yeni takip tarihi</label><input type="date" id="date-${r.id}" value="${esc(d)}"></div>
+    </div>
+    <div class="foot">
+      <button class="btn accent" onclick="completeStep(${r.id})">✓ Yapıldı + Kaydet</button>
+      <button class="btn ghost" onclick="saveDay(${r.id}, false)">Sadece Kaydet</button>
+    </div>
+  </div>`;
+}
+function durumSelect(id, cur){
+  const opts = ["Yeni Talep","Bilgi Verildi","Düşünüyor","Takipte","Kayıt Oldu","Kaybedildi","Kapsam Dışı"];
+  return `<select id="${id}">${opts.map(o=>`<option ${o===cur?"selected":""}>${o}</option>`).join("")}</select>`;
+}
+async function saveDay(rowId, tick){
+  const r = leadRows().find(x => x.id === rowId);
+  const dateCol = LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"];
+  const noteCol = LC["Arama Hakkında Notlar"];
+  const cells = [];
+  const note = document.getElementById("note-"+rowId).value.trim();
+  if (note){
+    const old = cell(r, noteCol);
+    cells.push({ columnId: noteCol, value: `[${today()}] ${note}` + (old ? "\n\n" + old : "") });
+  }
+  const nd = document.getElementById("durum-"+rowId).value;
+  if (nd !== cell(r, LC["Durum"])) cells.push({ columnId: LC["Durum"], value: nd });
+  const ndate = document.getElementById("date-"+rowId).value;
+  if (ndate && ndate !== cell(r, dateCol)) cells.push({ columnId: dateCol, value: ndate });
+  if (tick) cells.push({ columnId: LC["Yapıldı"], value: true });
+  if (!cells.length){ toast("Değişiklik yok"); return; }
+  await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId, cells }] });
+  await refreshAll(); show("bugun");
+}
+function completeStep(rowId){ saveDay(rowId, true); }
+
+// ---------- Pipeline ----------
+function renderPipeline(){
+  const el = document.getElementById("v-pipeline");
+  const durums = ["Hepsi","Yeni Talep","Bilgi Verildi","Düşünüyor","Takipte","Kayıt Oldu","Kaybedildi","Kapsam Dışı"];
+  let rows = leadRows();
+  if (durumFilter !== "Hepsi") rows = rows.filter(r => cell(r, LC["Durum"]) === durumFilter);
+  if (searchQ) rows = rows.filter(r => cell(r, LC["Ad Soyad"]).toLowerCase().includes(searchQ) || cell(r, LC["Notlar"]).toLowerCase().includes(searchQ));
+  rows.sort((a,b) => (isOverdue(b)?1:0) - (isOverdue(a)?1:0));
+  el.innerHTML = `
+    <input class="search" placeholder="İsim veya not ara..." value="${esc(searchQ)}" oninput="searchQ=this.value.toLowerCase(); renderPipeline()">
+    <div class="filters">${durums.map(d=>`<button class="${d===durumFilter?"on":""}" onclick="durumFilter='${d}'; renderPipeline()">${d}</button>`).join("")}</div>
+    ${rows.map(r => leadCard(r)).join("") || `<div class="card"><p class="meta">Kayıt yok.</p></div>`}`;
+}
+function leadCard(r){
+  const dateCol = LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"];
+  const d = cell(r, dateCol);
+  const open = OPEN_DURUM.includes(cell(r, LC["Durum"]));
+  return `<div class="card">
+    <div class="row">
+      <h3>${esc(cell(r, LC["Ad Soyad"]))}</h3>
+      <span class="chip ${cell(r,LC["Durum"])==="Kayıt Oldu"?"ok":(isOverdue(r)?"warn":"")}">${esc(cell(r, LC["Durum"])||"?")}</span>
+      ${isOverdue(r)? `<span class="chip warn">gecikmiş</span>`:""}
+      ${isDateless(r)? `<span class="chip warn">tarih yok</span>`:""}
+    </div>
+    <p class="meta">${esc(cell(r, LC["Talep Tarihi"]))} · ${esc(cell(r, LC["Kaynak*"] ?? LC["Kaynak"])||"kaynak boş")} · ${esc(courses(r)||"kurs seçilmemiş")}${d? " · takip: "+esc(d):""}</p>
+    <details>
+      <summary style="cursor:pointer; font-size:13px; color:var(--brand); font-weight:600">Detay / Düzenle</summary>
+      ${cell(r, LC["Notlar"]) ? `<div class="sec">Notlar (insan)</div><div class="pre">${esc(cell(r, LC["Notlar"]))}</div>`:""}
+      ${cell(r, LC["AI Vaka Okuması"]) ? `<div class="sec">AI Vaka Okuması</div><div class="pre">${esc(cell(r, LC["AI Vaka Okuması"]))}</div>`:""}
+      ${cell(r, LC["Sıradaki Adımlar"]) ? `<div class="sec">Sıradaki Adım</div><div class="pre">${esc(cell(r, LC["Sıradaki Adımlar"]))}</div>`:""}
+      ${cell(r, LC["Sıradaki Aramanın Metni"]) ? `<div class="sec">Arama Maddeleri</div><div class="pre">${esc(cell(r, LC["Sıradaki Aramanın Metni"]))}</div>`:""}
+      ${cell(r, LC["Arama Hakkında Notlar"]) ? `<div class="sec">Arama Hakkında Notlar</div><div class="pre">${esc(cell(r, LC["Arama Hakkında Notlar"]))}</div>`:""}
+      <div class="grid2">
+        <div><label class="f">Durum</label>${durumSelect("pd-"+r.id, cell(r, LC["Durum"]))}</div>
+        <div><label class="f">Sonraki Adım Tarihi</label><input type="date" id="pt-${r.id}" value="${esc(d)}"></div>
+        <div><label class="f">GSM</label><input type="text" id="pg-${r.id}" value="${esc(cell(r, LC["GSM"]))}"></div>
+        <div><label class="f">Eposta</label><input type="text" id="pe-${r.id}" value="${esc(cell(r, LC["Eposta"]))}"></div>
+      </div>
+      <label class="f">Notlar'a ekle (üstüne tarihli eklenir, eskisi silinmez)</label>
+      <textarea id="pn-${r.id}" placeholder="Yeni not..."></textarea>
+      <div class="foot"><button class="btn" onclick="saveLead(${r.id})">Kaydet</button></div>
+    </details>
+  </div>`;
+}
+async function saveLead(rowId){
+  const r = leadRows().find(x => x.id === rowId);
+  const dateCol = LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"];
+  const cells = [];
+  const nd = document.getElementById("pd-"+rowId).value;
+  if (nd !== cell(r, LC["Durum"])) cells.push({ columnId: LC["Durum"], value: nd });
+  const nt = document.getElementById("pt-"+rowId).value;
+  if (nt !== cell(r, dateCol)) cells.push({ columnId: dateCol, value: nt || "" });
+  const ng = document.getElementById("pg-"+rowId).value.trim();
+  if (ng !== cell(r, LC["GSM"])) cells.push({ columnId: LC["GSM"], value: ng });
+  const ne = document.getElementById("pe-"+rowId).value.trim();
+  if (ne !== cell(r, LC["Eposta"])) cells.push({ columnId: LC["Eposta"], value: ne });
+  const note = document.getElementById("pn-"+rowId).value.trim();
+  if (note){
+    const old = cell(r, LC["Notlar"]);
+    cells.push({ columnId: LC["Notlar"], value: `[${today()}] ${note}` + (old ? "\n\n" + old : "") });
+  }
+  if (!cells.length){ toast("Değişiklik yok"); return; }
+  await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId, cells }] });
+  await refreshAll(); show("pipeline");
+}
+
+// ---------- Sınıflar ----------
+function renderSiniflar(){
+  const rows = (TRAIN.rows||[]).filter(r => cell(r, TC["Training"]) && cell(r, TC["Training"]) !== "TOTAL");
+  const upcoming = rows.filter(r => cell(r, TC["End date"]) >= today()).sort((a,b)=>cell(a,TC["Start date"]).localeCompare(cell(b,TC["Start date"])));
+  const past = rows.filter(r => cell(r, TC["End date"]) < today()).sort((a,b)=>cell(b,TC["Start date"]).localeCompare(cell(a,TC["Start date"])));
+  document.getElementById("v-siniflar").innerHTML =
+    `<div class="sec">Yaklaşan sınıflar</div>` + (upcoming.map(trainCard).join("") || `<div class="card"><p class="meta">Yaklaşan sınıf yok.</p></div>`) +
+    `<div class="sec">Geçmiş / kapalı</div>` + past.slice(0,12).map(trainCard).join("");
+}
+function trainCard(r){
+  const reg = Number(rawCell(r, TC["Regstrd"]))||0, cap = Number(rawCell(r, TC["Cap"]))||0;
+  const pct = cap ? Math.min(100, Math.round(reg/cap*100)) : 0;
+  const statuses = ["Registration open","Confirmed","In progress","Delivered","Cancelled"];
+  const st = cell(r, TC["Status"]);
+  return `<div class="card">
+    <div class="row"><h3>${esc(cell(r, TC["Training"]))}</h3>
+      <span class="chip">${esc(cell(r, TC["Lang."]))}</span>
+      <span class="chip ${st==="Cancelled"?"warn":(st==="Delivered"?"ok":"acc")}">${esc(st)}</span></div>
+    <p class="meta">${esc(cell(r, TC["Start date"]))} → ${esc(cell(r, TC["End date"]))} · ${fmtTL(Number(rawCell(r, TC["Price TRY"])))} / koltuk</p>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <p class="meta">${reg}/${cap} koltuk · gerçekleşen: ${fmtTL(Number(rawCell(r, TC["Realized Income"]))||reg*Number(rawCell(r, TC["Price TRY"])))}</p>
+    <details><summary style="cursor:pointer; font-size:13px; color:var(--brand); font-weight:600">Düzenle</summary>
+      <div class="grid2">
+        <div><label class="f">Kayıtlı (Regstrd)</label><input type="text" id="tr-${r.id}" value="${reg}" inputmode="numeric"></div>
+        <div><label class="f">Status</label><select id="ts-${r.id}">${statuses.map(s=>`<option ${s===st?"selected":""}>${s}</option>`).join("")}</select></div>
+      </div>
+      <label class="f">Notes'a ekle</label><textarea id="tn-${r.id}" placeholder="örn. 2. koltuk: Ad Soyad (kayıt tarihi)"></textarea>
+      <div class="foot"><button class="btn" onclick="saveTrain(${r.id})">Kaydet</button></div>
+    </details>
+  </div>`;
+}
+async function saveTrain(rowId){
+  const r = (TRAIN.rows||[]).find(x => x.id === rowId);
+  const cells = [];
+  const nr = Number(document.getElementById("tr-"+rowId).value);
+  if (isFinite(nr) && nr !== (Number(rawCell(r, TC["Regstrd"]))||0)) cells.push({ columnId: TC["Regstrd"], value: nr });
+  const ns = document.getElementById("ts-"+rowId).value;
+  if (ns !== cell(r, TC["Status"])) cells.push({ columnId: TC["Status"], value: ns });
+  const note = document.getElementById("tn-"+rowId).value.trim();
+  if (note){
+    const old = cell(r, TC["Notes"]);
+    cells.push({ columnId: TC["Notes"], value: (old ? old + " " : "") + note });
+  }
+  if (!cells.length){ toast("Değişiklik yok"); return; }
+  await api({ action:"updateRows", sheetId: CONFIG.SHEET_TRAININGS, rows:[{ id: rowId, cells }] });
+  await refreshAll(); show("siniflar");
+}
+
+function renderAll(){ renderPanel(); renderBugun(); renderPipeline(); renderSiniflar(); }
+boot();
+</script>
+</body>
+</html>
