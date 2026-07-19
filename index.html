@@ -159,14 +159,28 @@ async function api(payload){
 
 async function refreshAll(){
   toast("Yükleniyor...");
-  const [l, t] = await Promise.all([
-    api({ action:"getSheet", sheetId: CONFIG.SHEET_LEADS }),
-    api({ action:"getSheet", sheetId: CONFIG.SHEET_TRAININGS }),
-  ]);
-  LEADS = l; TRAIN = t;
-  LC = {}; l.columns.forEach(c => LC[c.title] = c.id);
-  TC = {}; t.columns.forEach(c => TC[c.title] = c.id);
-  renderAll(); toast("Güncellendi");
+  try{
+    const [l, t] = await Promise.all([
+      api({ action:"getSheet", sheetId: CONFIG.SHEET_LEADS }),
+      api({ action:"getSheet", sheetId: CONFIG.SHEET_TRAININGS }),
+    ]);
+    if (!l.columns || !t.columns) throw new Error("Beklenmeyen yanıt: " + JSON.stringify(l).slice(0,200));
+    LEADS = l; TRAIN = t;
+    LC = {}; l.columns.forEach(c => LC[c.title] = c.id);
+    TC = {}; t.columns.forEach(c => TC[c.title] = c.id);
+    renderAll(); toast("Güncellendi");
+  }catch(e){
+    const msg = esc(String(e && e.message ? e.message : e));
+    ["panel","bugun","pipeline","siniflar"].forEach(v => {
+      document.getElementById("v-"+v).innerHTML =
+        `<div class="card"><h3>Bağlantı hatası</h3>
+         <p class="meta">Veri çekilemedi. Hata mesajı:</p>
+         <div class="pre">${msg}</div>
+         <p class="meta">Bu ekranın görüntüsünü Claude'a gönderin. Muhtemel sebepler: ALLOWED_EMAILS secret eksik/yanlış, SMARTSHEET_TOKEN geçersiz, veya function adı farklı.</p>
+         <div class="foot"><button class="btn" onclick="refreshAll()">Tekrar dene</button></div></div>`;
+    });
+    toast("Hata: veri çekilemedi");
+  }
 }
 
 // ---------- helpers ----------
