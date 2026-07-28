@@ -4,6 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>CoffeeNutz Academy Management</title>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
@@ -130,7 +133,7 @@ let LC = {}, TC = {};           // column title -> id maps
 let durumFilter = "Hepsi", searchQ = "";
 
 // ---------- v3.1: language (UI chrome only; sheet data stays TR) ----------
-const APP_VERSION = "v3.2";
+const APP_VERSION = "v3.3";
 let LANG = "tr";
 try{ LANG = localStorage.getItem("cn_lang") || "tr"; }catch(_){}
 const STR = {
@@ -187,6 +190,16 @@ const STR = {
   kaydedildi:["kaydedildi","registered"], koltukNo:[". koltuk",". seat"],
   degisiklikYok:["Değişiklik yok","No changes"],
   dolu:["DOLU","FULL"],
+  yeniLead:["+ Yeni Lead","+ New Lead"],
+  yeniLeadTitle:["Yeni Lead","New Lead"],
+  adSoyadLbl:["Ad Soyad (zorunlu)","Full name (required)"],
+  kaynakLbl:["Kaynak (ilk temas)","Source (first touch)"],
+  ilgilendigi:["İlgilendiği eğitimler","Interested trainings"],
+  ilkNot:["İlk not (Notlar'a tarihli yazılır)","First note (date-stamped into Notlar)"],
+  ekle:["Ekle","Add"],
+  adGerekli:["Ad Soyad gerekli","Full name is required"],
+  eklendi:["Yeni lead eklendi","New lead added"],
+  secilmedi:["(seçilmedi)","(none)"],
 };
 function t(k){ const v = STR[k]; return v ? v[LANG==="en"?1:0] : k; }
 function toggleLang(){
@@ -291,9 +304,10 @@ function isDateless(r){
   const du = cell(r, LC["Durum"]);
   return !d && (du === "Düşünüyor" || du === "Takipte");
 }
+const COURSE_LIST = ["Barista Bundle","Barista PRO","Roasting Bundle","Roasting PRO","Sensory Bundle","Sensory PRO","Q Grader"];
+const KAYNAK_OPTS = ["SCA.coffee","ChatGPT AI","Claude AI","Diğer AI","Google SE","Diğer SE","@CoffeeNutzOfficial","Instagram","Arkadaş Referans","Forum: Kahve Kulubü","Forum: Kahveler.Net","Diğer (Burayı Silip Belirt)"];
 function courses(r){
-  return ["Barista Bundle","Barista PRO","Roasting Bundle","Roasting PRO","Sensory Bundle","Sensory PRO","Q Grader"]
-    .filter(k => rawCell(r, LC[k]) === true).join(", ");
+  return COURSE_LIST.filter(k => rawCell(r, LC[k]) === true).join(", ");
 }
 
 // ---------- Panel ----------
@@ -388,6 +402,7 @@ function renderPipeline(){
   if (searchQ) rows = rows.filter(r => cell(r, LC["Ad Soyad"]).toLowerCase().includes(searchQ) || cell(r, LC["Notlar"]).toLowerCase().includes(searchQ));
   rows.sort((a,b) => (isOverdue(b)?1:0) - (isOverdue(a)?1:0));
   el.innerHTML = `
+    <div class="row" style="margin-bottom:10px"><button class="btn small accent" onclick="openYeniLead()">${t("yeniLead")}</button></div>
     <input class="search" placeholder="${t("ara")}" value="${esc(searchQ)}" oninput="searchQ=this.value.toLowerCase(); renderPipeline()">
     <div class="filters">${durums.map(d=>`<button class="${d===durumFilter?"on":""}" onclick="durumFilter='${d}'; renderPipeline()">${d==="Hepsi" ? t("hepsi") : d}</button>`).join("")}</div>
     ${rows.map(r => leadCard(r)).join("") || `<div class="card"><p class="meta">${t("kayitYokList")}</p></div>`}`;
@@ -404,7 +419,7 @@ function leadCard(r){
       ${isDateless(r)? `<span class="chip warn">${t("tarihYokKucuk")}</span>`:""}
     </div>
     <p class="meta">${esc(cell(r, LC["Talep Tarihi"]))} · ${esc(cell(r, LC["Kaynak*"] ?? LC["Kaynak"])||t("kaynakBos"))} · ${esc(courses(r)||t("kursYok"))}${d? " · "+t("takip")+": "+esc(d):""}</p>
-    <div class="row" style="margin-top:8px">
+    <div class="row" style="margin:8px 0 12px">
       ${cell(r, LC["Durum"])==="Kayıt Oldu" ? "" : `<button class="btn small accent" onclick="openKayit(${r.id})">${t("kayitOlduBtn")}</button>`}
       <button class="btn small ghost" onclick="openYeniDurum(${r.id})">${t("yeniDurum")}</button>
     </div>
@@ -550,6 +565,56 @@ async function doYeniDurum(rowId){
   await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId, cells }] });
   closeModal();
   await refreshAll(); show("pipeline");
+}
+
+// ---------- v3.3: yeni lead ----------
+function openYeniLead(){
+  const cboxes = COURSE_LIST.map(k => `<label style="display:flex; align-items:center; gap:6px; font-size:13px; margin:2px 0"><input type="checkbox" class="nlCourse" value="${k}" style="width:auto">${k}</label>`).join("");
+  const kOpts = [`<option value="">${t("secilmedi")}</option>`].concat(KAYNAK_OPTS.map(k=>`<option>${esc(k)}</option>`)).join("");
+  openModal(`
+    <h3>${t("yeniLeadTitle")}</h3>
+    <label class="f">${t("adSoyadLbl")}</label><input type="text" id="nlName">
+    <div class="grid2">
+      <div><label class="f">GSM</label><input type="text" id="nlGsm" inputmode="tel"></div>
+      <div><label class="f">Eposta</label><input type="text" id="nlMail" inputmode="email"></div>
+      <div><label class="f">${t("kaynakLbl")}</label><select id="nlKaynak">${kOpts}</select></div>
+      <div><label class="f">${t("durumLbl")}</label>${durumSelect("nlDurum","Yeni Talep")}</div>
+    </div>
+    <label class="f">${t("sonrakiTarih")}</label><input type="date" id="nlDate" value="${today()}">
+    <label class="f">${t("ilgilendigi")}</label>
+    <div class="grid2" style="gap:2px">${cboxes}</div>
+    <label class="f">${t("ilkNot")}</label><textarea id="nlNote"></textarea>
+    <div class="foot">
+      <button class="btn accent" id="nlGo" onclick="doYeniLead()">${t("ekle")}</button>
+      <button class="btn ghost" onclick="closeModal()">${t("vazgec")}</button>
+    </div>`);
+}
+async function doYeniLead(){
+  const name = document.getElementById("nlName").value.trim();
+  if (!name){ toast(t("adGerekli")); return; }
+  document.getElementById("nlGo").disabled = true;
+  const cells = [
+    { columnId: LC["Ad Soyad"], value: name },
+    { columnId: LC["Talep Tarihi"], value: today() },
+  ];
+  const gsm = document.getElementById("nlGsm").value.trim(); if (gsm) cells.push({ columnId: LC["GSM"], value: gsm });
+  const mail = document.getElementById("nlMail").value.trim(); if (mail) cells.push({ columnId: LC["Eposta"], value: mail });
+  const kay = document.getElementById("nlKaynak").value;
+  if (kay) cells.push({ columnId: LC["Kaynak*"] ?? LC["Kaynak"], objectValue: { objectType: "MULTI_PICKLIST", values: [kay] }, strict: false });
+  const du = document.getElementById("nlDurum").value;
+  cells.push({ columnId: LC["Durum"], value: du });
+  if (LC[HIST_TITLE]) cells.push({ columnId: LC[HIST_TITLE], value: `[${today()}] ${du}` });
+  const nd = document.getElementById("nlDate").value;
+  if (nd) cells.push({ columnId: LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"], value: nd });
+  document.querySelectorAll(".nlCourse:checked").forEach(cb => { if (LC[cb.value]) cells.push({ columnId: LC[cb.value], value: true }); });
+  const note = document.getElementById("nlNote").value.trim();
+  if (note) cells.push({ columnId: LC["Notlar"], value: `[${today()}] ${note}` });
+  try{
+    await api({ action:"addRow", sheetId: CONFIG.SHEET_LEADS, row: { cells } });
+  }catch(e){ toast("Hata: " + e.message); document.getElementById("nlGo").disabled = false; return; }
+  closeModal();
+  await refreshAll(); show("pipeline");
+  toast(t("eklendi"));
 }
 
 // ---------- Sınıflar ----------
