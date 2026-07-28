@@ -130,7 +130,7 @@ let LC = {}, TC = {};           // column title -> id maps
 let durumFilter = "Hepsi", searchQ = "";
 
 // ---------- v3.1: language (UI chrome only; sheet data stays TR) ----------
-const APP_VERSION = "v3.1";
+const APP_VERSION = "v3.2";
 let LANG = "tr";
 try{ LANG = localStorage.getItem("cn_lang") || "tr"; }catch(_){}
 const STR = {
@@ -244,14 +244,14 @@ async function api(payload){
 async function refreshAll(){
   toast(t("yukleniyor"));
   try{
-    const [l, t] = await Promise.all([
+    const [ld, td] = await Promise.all([
       api({ action:"getSheet", sheetId: CONFIG.SHEET_LEADS }),
       api({ action:"getSheet", sheetId: CONFIG.SHEET_TRAININGS }),
     ]);
-    if (!l.columns || !t.columns) throw new Error("Beklenmeyen yanıt: " + JSON.stringify(l).slice(0,200));
-    LEADS = l; TRAIN = t;
-    LC = {}; l.columns.forEach(c => LC[c.title] = c.id);
-    TC = {}; t.columns.forEach(c => TC[c.title] = c.id);
+    if (!ld.columns || !td.columns) throw new Error("Beklenmeyen yanıt: " + JSON.stringify(ld).slice(0,200));
+    LEADS = ld; TRAIN = td;
+    LC = {}; ld.columns.forEach(c => LC[c.title] = c.id);
+    TC = {}; td.columns.forEach(c => TC[c.title] = c.id);
     renderAll(); toast(t("guncellendi"));
   }catch(e){
     const msg = esc(String(e && e.message ? e.message : e));
@@ -273,7 +273,7 @@ function rawCell(row, colId){ const c = (row.cells||[]).find(x => x.columnId ===
 function today(){ return new Date().toISOString().slice(0,10); }
 function fmtTL(n){ return isFinite(n) ? new Intl.NumberFormat("tr-TR").format(n) + " ₺" : "-"; }
 function esc(s){ return String(s??"").replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
-function toast(m){ const t = document.getElementById("toast"); t.textContent = m; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"), 1800); }
+function toast(m){ const el = document.getElementById("toast"); el.textContent = m; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"), 1800); }
 function show(v){
   ["panel","bugun","pipeline","siniflar"].forEach(x => {
     document.getElementById("v-"+x).classList.toggle("hidden", x!==v);
@@ -293,7 +293,7 @@ function isDateless(r){
 }
 function courses(r){
   return ["Barista Bundle","Barista PRO","Roasting Bundle","Roasting PRO","Sensory Bundle","Sensory PRO","Q Grader"]
-    .filter(t => rawCell(r, LC[t]) === true).join(", ");
+    .filter(k => rawCell(r, LC[k]) === true).join(", ");
 }
 
 // ---------- Panel ----------
@@ -476,16 +476,16 @@ function openModal(html){ document.getElementById("modalBox").innerHTML = html; 
 function closeModal(){ document.getElementById("modalWrap").classList.add("hidden"); }
 
 function upcomingCohorts(){
-  return (TRAIN.rows||[]).filter(t =>
-    cell(t, TC["Training"]) && cell(t, TC["Training"]) !== "TOTAL" &&
-    cell(t, TC["End date"]) >= today() && cell(t, TC["Status"]) !== "Cancelled")
+  return (TRAIN.rows||[]).filter(c =>
+    cell(c, TC["Training"]) && cell(c, TC["Training"]) !== "TOTAL" &&
+    cell(c, TC["End date"]) >= today() && cell(c, TC["Status"]) !== "Cancelled")
     .sort((a,b)=>cell(a,TC["Start date"]).localeCompare(cell(b,TC["Start date"])));
 }
 function openKayit(rowId){
   const r = leadRows().find(x => x.id === rowId);
-  const opts = upcomingCohorts().map(t => {
-    const reg = Number(rawCell(t, TC["Regstrd"]))||0, cap = Number(rawCell(t, TC["Cap"]))||0;
-    return `<option value="${t.id}">${esc(cell(t, TC["Training"]))} · ${esc(cell(t, TC["Lang."]))} · ${esc(cell(t, TC["Start date"]))} · ${reg}/${cap}${(cap && reg>=cap)?" "+STR.dolu[LANG==="en"?1:0]:""}</option>`;
+  const opts = upcomingCohorts().map(c => {
+    const reg = Number(rawCell(c, TC["Regstrd"]))||0, cap = Number(rawCell(c, TC["Cap"]))||0;
+    return `<option value="${c.id}">${esc(cell(c, TC["Training"]))} · ${esc(cell(c, TC["Lang."]))} · ${esc(cell(c, TC["Start date"]))} · ${reg}/${cap}${(cap && reg>=cap)?" "+t("dolu"):""}</option>`;
   }).join("");
   openModal(`
     <h3>${t("kayitTitle")} ${esc(cell(r, LC["Ad Soyad"]))}</h3>
