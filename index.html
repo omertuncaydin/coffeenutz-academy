@@ -98,11 +98,13 @@
 
 <div id="app" class="hidden">
   <header>
-    <span class="logo">🐢 Academy Management <span style="font-weight:400; font-size:10px; opacity:.6">v3</span></span>
+    <span class="logo">🐢 Academy Management</span>
     <span class="sp"></span>
     <span class="who" id="who"></span>
-    <button class="btn small ghost" onclick="refreshAll()">Yenile</button>
-    <button class="btn small ghost" onclick="doLogout()">Çıkış</button>
+    <span class="who" id="ver" style="opacity:.6"></span>
+    <button class="btn small ghost" id="langBtn" onclick="toggleLang()">EN</button>
+    <button class="btn small ghost" id="btnRefresh" onclick="refreshAll()">Yenile</button>
+    <button class="btn small ghost" id="btnLogout" onclick="doLogout()">Çıkış</button>
   </header>
   <nav>
     <button id="tab-panel" class="on" onclick="show('panel')">Panel</button>
@@ -126,6 +128,81 @@ let session = null;
 let LEADS = null, TRAIN = null; // raw sheets
 let LC = {}, TC = {};           // column title -> id maps
 let durumFilter = "Hepsi", searchQ = "";
+
+// ---------- v3.1: language (UI chrome only; sheet data stays TR) ----------
+const APP_VERSION = "v3.1";
+let LANG = "tr";
+try{ LANG = localStorage.getItem("cn_lang") || "tr"; }catch(_){}
+const STR = {
+  yenile:["Yenile","Refresh"], cikis:["Çıkış","Logout"],
+  tabBugun:["Bugün","Today"], tabSiniflar:["Sınıflar","Classes"],
+  yukleniyor:["Yükleniyor...","Loading..."], guncellendi:["Güncellendi","Updated"],
+  hataVeri:["Hata: veri çekilemedi","Error: could not fetch data"],
+  baglantiHatasi:["Bağlantı hatası","Connection error"],
+  veriCekilemedi:["Veri çekilemedi. Hata mesajı:","Could not fetch data. Error message:"],
+  hataYardim:["Bu ekranın görüntüsünü Claude'a gönderin. Muhtemel sebepler: ALLOWED_EMAILS secret eksik/yanlış, SMARTSHEET_TOKEN geçersiz, veya function adı farklı.","Send a screenshot of this screen to Claude. Likely causes: ALLOWED_EMAILS secret missing/wrong, SMARTSHEET_TOKEN invalid, or a different function name."],
+  tekrarDene:["Tekrar dene","Try again"],
+  acikLead:["Açık lead","Open leads"], takibiGecmis:["Takibi geçmiş","Overdue"],
+  tarihiEksik:["Tarihi eksik","Missing date"], kayitToplam:["Kayıt oldu (toplam)","Registered (total)"],
+  koltukTile:["Yaklaşan sınıflarda koltuk","Seats in upcoming classes"],
+  gelirTile:["Yaklaşan: gerçekleşen gelir","Upcoming: realized income"],
+  durumDagilimi:["Durum dağılımı","Status breakdown"], kaynakDagilimi:["Kaynak dağılımı","Source breakdown"],
+  kaynakNot:["Kaynak = lead bizi İLK nereden keşfetti. Boş olanları ilk temasta doldurun.","Source = where the lead FIRST discovered us. Fill empty ones on first contact."],
+  bugunTemiz:["Bugün temiz 🎉","All clear today 🎉"],
+  bugunBos:["Takibi geçmiş veya bugüne planlı lead yok.","No overdue or due-today leads."],
+  gecikmis:["GECİKMİŞ","OVERDUE"], bugunChip:["Bugün","Today"], tarihYok:["Tarih yok","No date"],
+  adimYok:["(adım yazılmamış)","(no step written)"],
+  aramaSonucu:["Arama sonucu (Arama Hakkında Notlar'a eklenir)","Call result (appended to Call Notes)"],
+  gorusmedeNe:["Görüşmede ne oldu?","What happened on the call?"],
+  yeniDurum:["Yeni Durum","New Status"], yeniTakip:["Yeni takip tarihi","New follow-up date"],
+  yeniTakipOps:["Yeni takip tarihi (opsiyonel)","New follow-up date (optional)"],
+  yapildiKaydet:["✓ Yapıldı + Kaydet","✓ Done + Save"], sadeceKaydet:["Sadece Kaydet","Save only"],
+  kayitBtn:["🎓 Kayıt","🎓 Register"], kayitOlduBtn:["🎓 Kayıt Oldu","🎓 Register"],
+  ara:["İsim veya not ara...","Search name or note..."], hepsi:["Hepsi","All"],
+  kayitYokList:["Kayıt yok.","No records."],
+  gecikmisKucuk:["gecikmiş","overdue"], tarihYokKucuk:["tarih yok","no date"],
+  kaynakBos:["kaynak boş","no source"], kursYok:["kurs seçilmemiş","no course picked"], takip:["takip","follow-up"],
+  detayDuzenle:["Detay / Düzenle","Details / Edit"],
+  notlarInsan:["Notlar (insan)","Notes (human)"], vaka:["AI Vaka Okuması","AI Case Reading"],
+  siradakiAdim:["Sıradaki Adım","Next Step"], aramaMaddeleri:["Arama Maddeleri","Call Points"],
+  durumGecmisi:["Durum Geçmişi","Status History"], aramaNotlari:["Arama Hakkında Notlar","Call Notes"],
+  durumLbl:["Durum","Status"], sonrakiTarih:["Sonraki Adım Tarihi","Next Step Date"],
+  notlaraEkle:["Notlar'a ekle (üstüne tarihli eklenir, eskisi silinmez)","Append to Notes (date-stamped on top, old kept)"],
+  yeniNot:["Yeni not...","New note..."], kaydet:["Kaydet","Save"],
+  yaklasanSiniflar:["Yaklaşan sınıflar","Upcoming classes"], gecmisKapali:["Geçmiş / kapalı","Past / closed"],
+  yaklasanYok:["Yaklaşan sınıf yok.","No upcoming classes."],
+  koltukKisa:["koltuk","seats"], gerceklesen:["gerçekleşen","realized"], perKoltuk:["/ koltuk","/ seat"],
+  kayitliReg:["Kayıtlı (Regstrd)","Registered (Regstrd)"], notesEkle:["Notes'a ekle","Append to Notes"],
+  notesOrnek:["örn. 2. koltuk: Ad Soyad (kayıt tarihi)","e.g. 2nd seat: Full Name (date)"],
+  duzenle:["Düzenle","Edit"],
+  kayitTitle:["🎓 Kayıt:","🎓 Register:"],
+  sinifCanli:["Sınıf (Trainings'ten canlı)","Class (live from Trainings)"],
+  yaklasanSinifYok:["Yaklaşan sınıf yok","No upcoming class"],
+  odemeOnay:["Ödeme onaylandı (kural: Kayıt Oldu = ödemesi alınmış)","Payment confirmed (rule: Kayıt Oldu = payment received)"],
+  kaydiIsle:["Kaydı İşle","Process Registration"], vazgec:["Vazgeç","Cancel"],
+  kayitAciklama:["Tek adımda: lead → Kayıt Oldu + geçmiş etiketi + sınıfta koltuk +1 + Notes'a isim.","One step: lead → Kayıt Oldu + history tag + seat +1 in class + name into Notes."],
+  sinifSecin:["Sınıf seçin","Pick a class"],
+  leadYazilamadi:["Lead yazılamadı: ","Lead write failed: "],
+  sinifYazilamadi:["Lead güncellendi ama SINIF YAZILAMADI: Sınıflar'dan elle düzeltin","Lead updated but CLASS WRITE FAILED: fix manually in Classes"],
+  kaydedildi:["kaydedildi","registered"], koltukNo:[". koltuk",". seat"],
+  degisiklikYok:["Değişiklik yok","No changes"],
+  dolu:["DOLU","FULL"],
+};
+function t(k){ const v = STR[k]; return v ? v[LANG==="en"?1:0] : k; }
+function toggleLang(){
+  LANG = (LANG==="en" ? "tr" : "en");
+  try{ localStorage.setItem("cn_lang", LANG); }catch(_){}
+  applyChrome();
+  if (LEADS && TRAIN) renderAll();
+}
+function applyChrome(){
+  document.getElementById("ver").textContent = APP_VERSION;
+  document.getElementById("langBtn").textContent = LANG==="en" ? "TR" : "EN";
+  document.getElementById("btnRefresh").textContent = t("yenile");
+  document.getElementById("btnLogout").textContent = t("cikis");
+  document.getElementById("tab-bugun").textContent = t("tabBugun");
+  document.getElementById("tab-siniflar").textContent = t("tabSiniflar");
+}
 
 // ---------- auth ----------
 async function doLogin(){
@@ -165,7 +242,7 @@ async function api(payload){
 }
 
 async function refreshAll(){
-  toast("Yükleniyor...");
+  toast(t("yukleniyor"));
   try{
     const [l, t] = await Promise.all([
       api({ action:"getSheet", sheetId: CONFIG.SHEET_LEADS }),
@@ -175,18 +252,18 @@ async function refreshAll(){
     LEADS = l; TRAIN = t;
     LC = {}; l.columns.forEach(c => LC[c.title] = c.id);
     TC = {}; t.columns.forEach(c => TC[c.title] = c.id);
-    renderAll(); toast("Güncellendi");
+    renderAll(); toast(t("guncellendi"));
   }catch(e){
     const msg = esc(String(e && e.message ? e.message : e));
     ["panel","bugun","pipeline","siniflar"].forEach(v => {
       document.getElementById("v-"+v).innerHTML =
-        `<div class="card"><h3>Bağlantı hatası</h3>
-         <p class="meta">Veri çekilemedi. Hata mesajı:</p>
+        `<div class="card"><h3>${t("baglantiHatasi")}</h3>
+         <p class="meta">${t("veriCekilemedi")}</p>
          <div class="pre">${msg}</div>
-         <p class="meta">Bu ekranın görüntüsünü Claude'a gönderin. Muhtemel sebepler: ALLOWED_EMAILS secret eksik/yanlış, SMARTSHEET_TOKEN geçersiz, veya function adı farklı.</p>
-         <div class="foot"><button class="btn" onclick="refreshAll()">Tekrar dene</button></div></div>`;
+         <p class="meta">${t("hataYardim")}</p>
+         <div class="foot"><button class="btn" onclick="refreshAll()">${t("tekrarDene")}</button></div></div>`;
     });
-    toast("Hata: veri çekilemedi");
+    toast(t("hataVeri"));
   }
 }
 
@@ -235,16 +312,16 @@ function renderPanel(){
 
   document.getElementById("v-panel").innerHTML = `
     <div class="tiles">
-      <div class="tile"><div class="n">${open.length}</div><div class="l">Açık lead</div></div>
-      <div class="tile ${overdue.length? "bad":""}"><div class="n">${overdue.length}</div><div class="l">Takibi geçmiş</div></div>
-      <div class="tile ${dateless.length? "bad":""}"><div class="n">${dateless.length}</div><div class="l">Tarihi eksik</div></div>
-      <div class="tile good"><div class="n">${won}</div><div class="l">Kayıt oldu (toplam)</div></div>
-      <div class="tile"><div class="n">${seats}/${cap}</div><div class="l">Yaklaşan sınıflarda koltuk</div></div>
-      <div class="tile good"><div class="n">${fmtTL(realized)}</div><div class="l">Yaklaşan: gerçekleşen gelir</div></div>
+      <div class="tile"><div class="n">${open.length}</div><div class="l">${t("acikLead")}</div></div>
+      <div class="tile ${overdue.length? "bad":""}"><div class="n">${overdue.length}</div><div class="l">${t("takibiGecmis")}</div></div>
+      <div class="tile ${dateless.length? "bad":""}"><div class="n">${dateless.length}</div><div class="l">${t("tarihiEksik")}</div></div>
+      <div class="tile good"><div class="n">${won}</div><div class="l">${t("kayitToplam")}</div></div>
+      <div class="tile"><div class="n">${seats}/${cap}</div><div class="l">${t("koltukTile")}</div></div>
+      <div class="tile good"><div class="n">${fmtTL(realized)}</div><div class="l">${t("gelirTile")}</div></div>
     </div>
-    <div class="card"><h3>Durum dağılımı</h3><div class="row">${Object.entries(byDurum).map(([k,v])=>`<span class="chip">${esc(k)}: ${v}</span>`).join("")}</div></div>
-    <div class="card"><h3>Kaynak dağılımı</h3><div class="row">${Object.entries(byKaynak).map(([k,v])=>`<span class="chip">${esc(k)}: ${v}</span>`).join("")}</div>
-      <p class="meta" style="margin-top:8px">Kaynak = lead bizi İLK nereden keşfetti. Boş olanları ilk temasta doldurun.</p></div>`;
+    <div class="card"><h3>${t("durumDagilimi")}</h3><div class="row">${Object.entries(byDurum).map(([k,v])=>`<span class="chip">${esc(k)}: ${v}</span>`).join("")}</div></div>
+    <div class="card"><h3>${t("kaynakDagilimi")}</h3><div class="row">${Object.entries(byKaynak).map(([k,v])=>`<span class="chip">${esc(k)}: ${v}</span>`).join("")}</div>
+      <p class="meta" style="margin-top:8px">${t("kaynakNot")}</p></div>`;
 }
 
 // ---------- Bugün (assistant day view) ----------
@@ -252,28 +329,28 @@ function renderBugun(){
   const rows = leadRows().filter(r => isOverdue(r) || isDateless(r) ||
     (cell(r, LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"]) === today()));
   const el = document.getElementById("v-bugun");
-  if (!rows.length){ el.innerHTML = `<div class="card"><h3>Bugün temiz 🎉</h3><p class="meta">Takibi geçmiş veya bugüne planlı lead yok.</p></div>`; return; }
+  if (!rows.length){ el.innerHTML = `<div class="card"><h3>${t("bugunTemiz")}</h3><p class="meta">${t("bugunBos")}</p></div>`; return; }
   el.innerHTML = rows.map(r => dayCard(r)).join("");
 }
 function dayCard(r){
   const dateCol = LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"];
   const d = cell(r, dateCol);
-  const badge = isOverdue(r) ? `<span class="chip warn">GECİKMİŞ: ${esc(d)}</span>` : (d ? `<span class="chip acc">Bugün</span>` : `<span class="chip warn">Tarih yok</span>`);
+  const badge = isOverdue(r) ? `<span class="chip warn">${t("gecikmis")}: ${esc(d)}</span>` : (d ? `<span class="chip acc">${t("bugunChip")}</span>` : `<span class="chip warn">${t("tarihYok")}</span>`);
   return `<div class="card">
     <div class="row"><h3>${esc(cell(r, LC["Ad Soyad"]))}</h3>${badge}<span class="chip">${esc(cell(r, LC["Durum"]))}</span></div>
     <p class="meta">${esc(courses(r))} · GSM: ${esc(cell(r, LC["GSM"])||"-")}</p>
-    <div class="pre">${esc(cell(r, LC["Sıradaki Adımlar"])||"(adım yazılmamış)")}</div>
+    <div class="pre">${esc(cell(r, LC["Sıradaki Adımlar"])||t("adimYok"))}</div>
     ${cell(r, LC["Sıradaki Aramanın Metni"]) ? `<div class="pre">${esc(cell(r, LC["Sıradaki Aramanın Metni"]))}</div>` : ""}
-    <label class="f">Arama sonucu (Arama Hakkında Notlar'a eklenir)</label>
-    <textarea id="note-${r.id}" placeholder="Görüşmede ne oldu?"></textarea>
+    <label class="f">${t("aramaSonucu")}</label>
+    <textarea id="note-${r.id}" placeholder="${t("gorusmedeNe")}"></textarea>
     <div class="grid2">
-      <div><label class="f">Yeni Durum</label>${durumSelect("durum-"+r.id, cell(r, LC["Durum"]))}</div>
-      <div><label class="f">Yeni takip tarihi</label><input type="date" id="date-${r.id}" value="${esc(d)}"></div>
+      <div><label class="f">${t("yeniDurum")}</label>${durumSelect("durum-"+r.id, cell(r, LC["Durum"]))}</div>
+      <div><label class="f">${t("yeniTakip")}</label><input type="date" id="date-${r.id}" value="${esc(d)}"></div>
     </div>
     <div class="foot">
-      <button class="btn accent" onclick="completeStep(${r.id})">✓ Yapıldı + Kaydet</button>
-      <button class="btn ghost" onclick="saveDay(${r.id}, false)">Sadece Kaydet</button>
-      ${cell(r, LC["Durum"])==="Kayıt Oldu" ? "" : `<button class="btn" onclick="openKayit(${r.id})">🎓 Kayıt</button>`}
+      <button class="btn accent" onclick="completeStep(${r.id})">${t("yapildiKaydet")}</button>
+      <button class="btn ghost" onclick="saveDay(${r.id}, false)">${t("sadeceKaydet")}</button>
+      ${cell(r, LC["Durum"])==="Kayıt Oldu" ? "" : `<button class="btn" onclick="openKayit(${r.id})">${t("kayitBtn")}</button>`}
     </div>
   </div>`;
 }
@@ -296,7 +373,7 @@ async function saveDay(rowId, tick){
   const ndate = document.getElementById("date-"+rowId).value;
   if (ndate && ndate !== cell(r, dateCol)) cells.push({ columnId: dateCol, value: ndate });
   if (tick) cells.push({ columnId: LC["Yapıldı"], value: true });
-  if (!cells.length){ toast("Değişiklik yok"); return; }
+  if (!cells.length){ toast(t("degisiklikYok")); return; }
   await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId, cells }] });
   await refreshAll(); show("bugun");
 }
@@ -311,9 +388,9 @@ function renderPipeline(){
   if (searchQ) rows = rows.filter(r => cell(r, LC["Ad Soyad"]).toLowerCase().includes(searchQ) || cell(r, LC["Notlar"]).toLowerCase().includes(searchQ));
   rows.sort((a,b) => (isOverdue(b)?1:0) - (isOverdue(a)?1:0));
   el.innerHTML = `
-    <input class="search" placeholder="İsim veya not ara..." value="${esc(searchQ)}" oninput="searchQ=this.value.toLowerCase(); renderPipeline()">
-    <div class="filters">${durums.map(d=>`<button class="${d===durumFilter?"on":""}" onclick="durumFilter='${d}'; renderPipeline()">${d}</button>`).join("")}</div>
-    ${rows.map(r => leadCard(r)).join("") || `<div class="card"><p class="meta">Kayıt yok.</p></div>`}`;
+    <input class="search" placeholder="${t("ara")}" value="${esc(searchQ)}" oninput="searchQ=this.value.toLowerCase(); renderPipeline()">
+    <div class="filters">${durums.map(d=>`<button class="${d===durumFilter?"on":""}" onclick="durumFilter='${d}'; renderPipeline()">${d==="Hepsi" ? t("hepsi") : d}</button>`).join("")}</div>
+    ${rows.map(r => leadCard(r)).join("") || `<div class="card"><p class="meta">${t("kayitYokList")}</p></div>`}`;
 }
 function leadCard(r){
   const dateCol = LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"];
@@ -323,31 +400,31 @@ function leadCard(r){
     <div class="row">
       <h3>${esc(cell(r, LC["Ad Soyad"]))}</h3>
       <span class="chip ${cell(r,LC["Durum"])==="Kayıt Oldu"?"ok":(isOverdue(r)?"warn":"")}">${esc(cell(r, LC["Durum"])||"?")}</span>
-      ${isOverdue(r)? `<span class="chip warn">gecikmiş</span>`:""}
-      ${isDateless(r)? `<span class="chip warn">tarih yok</span>`:""}
+      ${isOverdue(r)? `<span class="chip warn">${t("gecikmisKucuk")}</span>`:""}
+      ${isDateless(r)? `<span class="chip warn">${t("tarihYokKucuk")}</span>`:""}
     </div>
-    <p class="meta">${esc(cell(r, LC["Talep Tarihi"]))} · ${esc(cell(r, LC["Kaynak*"] ?? LC["Kaynak"])||"kaynak boş")} · ${esc(courses(r)||"kurs seçilmemiş")}${d? " · takip: "+esc(d):""}</p>
+    <p class="meta">${esc(cell(r, LC["Talep Tarihi"]))} · ${esc(cell(r, LC["Kaynak*"] ?? LC["Kaynak"])||t("kaynakBos"))} · ${esc(courses(r)||t("kursYok"))}${d? " · "+t("takip")+": "+esc(d):""}</p>
     <div class="row" style="margin-top:8px">
-      ${cell(r, LC["Durum"])==="Kayıt Oldu" ? "" : `<button class="btn small accent" onclick="openKayit(${r.id})">🎓 Kayıt Oldu</button>`}
-      <button class="btn small ghost" onclick="openYeniDurum(${r.id})">Yeni Durum</button>
+      ${cell(r, LC["Durum"])==="Kayıt Oldu" ? "" : `<button class="btn small accent" onclick="openKayit(${r.id})">${t("kayitOlduBtn")}</button>`}
+      <button class="btn small ghost" onclick="openYeniDurum(${r.id})">${t("yeniDurum")}</button>
     </div>
     <details>
-      <summary style="cursor:pointer; font-size:13px; color:var(--brand); font-weight:600">Detay / Düzenle</summary>
-      ${cell(r, LC["Notlar"]) ? `<div class="sec">Notlar (insan)</div><div class="pre">${esc(cell(r, LC["Notlar"]))}</div>`:""}
-      ${cell(r, LC["AI Vaka Okuması"]) ? `<div class="sec">AI Vaka Okuması</div><div class="pre">${esc(cell(r, LC["AI Vaka Okuması"]))}</div>`:""}
-      ${cell(r, LC["Sıradaki Adımlar"]) ? `<div class="sec">Sıradaki Adım</div><div class="pre">${esc(cell(r, LC["Sıradaki Adımlar"]))}</div>`:""}
-      ${cell(r, LC["Sıradaki Aramanın Metni"]) ? `<div class="sec">Arama Maddeleri</div><div class="pre">${esc(cell(r, LC["Sıradaki Aramanın Metni"]))}</div>`:""}
+      <summary style="cursor:pointer; font-size:13px; color:var(--brand); font-weight:600">${t("detayDuzenle")}</summary>
+      ${cell(r, LC["Notlar"]) ? `<div class="sec">${t("notlarInsan")}</div><div class="pre">${esc(cell(r, LC["Notlar"]))}</div>`:""}
+      ${cell(r, LC["AI Vaka Okuması"]) ? `<div class="sec">${t("vaka")}</div><div class="pre">${esc(cell(r, LC["AI Vaka Okuması"]))}</div>`:""}
+      ${cell(r, LC["Sıradaki Adımlar"]) ? `<div class="sec">${t("siradakiAdim")}</div><div class="pre">${esc(cell(r, LC["Sıradaki Adımlar"]))}</div>`:""}
+      ${cell(r, LC["Sıradaki Aramanın Metni"]) ? `<div class="sec">${t("aramaMaddeleri")}</div><div class="pre">${esc(cell(r, LC["Sıradaki Aramanın Metni"]))}</div>`:""}
       ${histTags(r)}
-      ${cell(r, LC["Arama Hakkında Notlar"]) ? `<div class="sec">Arama Hakkında Notlar</div><div class="pre">${esc(cell(r, LC["Arama Hakkında Notlar"]))}</div>`:""}
+      ${cell(r, LC["Arama Hakkında Notlar"]) ? `<div class="sec">${t("aramaNotlari")}</div><div class="pre">${esc(cell(r, LC["Arama Hakkında Notlar"]))}</div>`:""}
       <div class="grid2">
-        <div><label class="f">Durum</label>${durumSelect("pd-"+r.id, cell(r, LC["Durum"]))}</div>
-        <div><label class="f">Sonraki Adım Tarihi</label><input type="date" id="pt-${r.id}" value="${esc(d)}"></div>
+        <div><label class="f">${t("durumLbl")}</label>${durumSelect("pd-"+r.id, cell(r, LC["Durum"]))}</div>
+        <div><label class="f">${t("sonrakiTarih")}</label><input type="date" id="pt-${r.id}" value="${esc(d)}"></div>
         <div><label class="f">GSM</label><input type="text" id="pg-${r.id}" value="${esc(cell(r, LC["GSM"]))}"></div>
         <div><label class="f">Eposta</label><input type="text" id="pe-${r.id}" value="${esc(cell(r, LC["Eposta"]))}"></div>
       </div>
-      <label class="f">Notlar'a ekle (üstüne tarihli eklenir, eskisi silinmez)</label>
-      <textarea id="pn-${r.id}" placeholder="Yeni not..."></textarea>
-      <div class="foot"><button class="btn" onclick="saveLead(${r.id})">Kaydet</button></div>
+      <label class="f">${t("notlaraEkle")}</label>
+      <textarea id="pn-${r.id}" placeholder="${t("yeniNot")}"></textarea>
+      <div class="foot"><button class="btn" onclick="saveLead(${r.id})">${t("kaydet")}</button></div>
     </details>
   </div>`;
 }
@@ -368,7 +445,7 @@ async function saveLead(rowId){
     const old = cell(r, LC["Notlar"]);
     cells.push({ columnId: LC["Notlar"], value: `[${today()}] ${note}` + (old ? "\n\n" + old : "") });
   }
-  if (!cells.length){ toast("Değişiklik yok"); return; }
+  if (!cells.length){ toast(t("degisiklikYok")); return; }
   await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId, cells }] });
   await refreshAll(); show("pipeline");
 }
@@ -393,7 +470,7 @@ function histTags(r){
     const cls = m[4]==="Kayıt Oldu" ? "ok" : ((m[4]==="Kaybedildi"||m[4]==="Kapsam Dışı") ? "warn" : "acc");
     return `<span class="chip ${cls}">${esc(m[4])} · ${m[3]}.${m[2]}.${m[1].slice(2)}</span>`;
   }).filter(Boolean).join("");
-  return chips ? `<div class="sec">Durum Geçmişi</div><div class="tagrow">${chips}</div>` : "";
+  return chips ? `<div class="sec">${t("durumGecmisi")}</div><div class="tagrow">${chips}</div>` : "";
 }
 function openModal(html){ document.getElementById("modalBox").innerHTML = html; document.getElementById("modalWrap").classList.remove("hidden"); }
 function closeModal(){ document.getElementById("modalWrap").classList.add("hidden"); }
@@ -408,57 +485,57 @@ function openKayit(rowId){
   const r = leadRows().find(x => x.id === rowId);
   const opts = upcomingCohorts().map(t => {
     const reg = Number(rawCell(t, TC["Regstrd"]))||0, cap = Number(rawCell(t, TC["Cap"]))||0;
-    return `<option value="${t.id}">${esc(cell(t, TC["Training"]))} · ${esc(cell(t, TC["Lang."]))} · ${esc(cell(t, TC["Start date"]))} · ${reg}/${cap}${(cap && reg>=cap)?" DOLU":""}</option>`;
+    return `<option value="${t.id}">${esc(cell(t, TC["Training"]))} · ${esc(cell(t, TC["Lang."]))} · ${esc(cell(t, TC["Start date"]))} · ${reg}/${cap}${(cap && reg>=cap)?" "+STR.dolu[LANG==="en"?1:0]:""}</option>`;
   }).join("");
   openModal(`
-    <h3>🎓 Kayıt: ${esc(cell(r, LC["Ad Soyad"]))}</h3>
-    <label class="f">Sınıf (Trainings'ten canlı)</label>
-    <select id="kayitCohort">${opts || `<option value="">Yaklaşan sınıf yok</option>`}</select>
+    <h3>${t("kayitTitle")} ${esc(cell(r, LC["Ad Soyad"]))}</h3>
+    <label class="f">${t("sinifCanli")}</label>
+    <select id="kayitCohort">${opts || `<option value="">${t("yaklasanSinifYok")}</option>`}</select>
     <label class="f" style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink)">
       <input type="checkbox" id="kayitPaid" style="width:auto" onchange="document.getElementById('kayitGo').disabled = !this.checked">
-      Ödeme onaylandı (kural: Kayıt Oldu = ödemesi alınmış)
+      ${t("odemeOnay")}
     </label>
     <div class="foot">
-      <button class="btn accent" id="kayitGo" disabled onclick="doKayit(${rowId})">Kaydı İşle</button>
-      <button class="btn ghost" onclick="closeModal()">Vazgeç</button>
+      <button class="btn accent" id="kayitGo" disabled onclick="doKayit(${rowId})">${t("kaydiIsle")}</button>
+      <button class="btn ghost" onclick="closeModal()">${t("vazgec")}</button>
     </div>
-    <p class="meta" style="margin-top:8px">Tek adımda: lead → Kayıt Oldu + geçmiş etiketi + sınıfta koltuk +1 + Notes'a isim.</p>`);
+    <p class="meta" style="margin-top:8px">${t("kayitAciklama")}</p>`);
 }
 async function doKayit(rowId){
   const r = leadRows().find(x => x.id === rowId);
   const tid = Number(document.getElementById("kayitCohort").value);
-  if (!tid){ toast("Sınıf seçin"); return; }
-  const t = (TRAIN.rows||[]).find(x => x.id === tid);
+  if (!tid){ toast(t("sinifSecin")); return; }
+  const coh = (TRAIN.rows||[]).find(x => x.id === tid);
   const name = cell(r, LC["Ad Soyad"]);
   document.getElementById("kayitGo").disabled = true;
   try{
     await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId,
       cells: [{ columnId: LC["Durum"], value: "Kayıt Oldu" }, ...histCells(r, "Kayıt Oldu")] }] });
-  }catch(e){ toast("Lead yazılamadı: " + e.message); document.getElementById("kayitGo").disabled = false; return; }
-  const newReg = (Number(rawCell(t, TC["Regstrd"]))||0) + 1;
-  const oldNotes = cell(t, TC["Notes"]);
+  }catch(e){ toast(t("leadYazilamadi") + e.message); document.getElementById("kayitGo").disabled = false; return; }
+  const newReg = (Number(rawCell(coh, TC["Regstrd"]))||0) + 1;
+  const oldNotes = cell(coh, TC["Notes"]);
   try{
     await api({ action:"updateRows", sheetId: CONFIG.SHEET_TRAININGS, rows:[{ id: tid, cells: [
       { columnId: TC["Regstrd"], value: newReg },
       { columnId: TC["Notes"], value: (oldNotes ? oldNotes + " " : "") + `${name} (kayıt ${today()})` },
     ]}]});
-  }catch(e){ closeModal(); await refreshAll(); toast("Lead güncellendi ama SINIF YAZILAMADI: Sınıflar'dan elle düzeltin"); return; }
+  }catch(e){ closeModal(); await refreshAll(); toast(t("sinifYazilamadi")); return; }
   closeModal();
   await refreshAll();
-  toast(`🎉 ${name} kaydedildi · ${newReg}. koltuk`);
+  toast(`🎉 ${name} ${t("kaydedildi")} · ${newReg}${t("koltukNo")}`);
 }
 
 function openYeniDurum(rowId){
   const r = leadRows().find(x => x.id === rowId);
   const dateCol = LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"];
   openModal(`
-    <h3>Yeni Durum: ${esc(cell(r, LC["Ad Soyad"]))}</h3>
-    <label class="f">Durum</label>${durumSelect("md-"+rowId, cell(r, LC["Durum"]))}
-    <label class="f">Yeni takip tarihi (opsiyonel)</label>
+    <h3>${t("yeniDurum")}: ${esc(cell(r, LC["Ad Soyad"]))}</h3>
+    <label class="f">${t("durumLbl")}</label>${durumSelect("md-"+rowId, cell(r, LC["Durum"]))}
+    <label class="f">${t("yeniTakipOps")}</label>
     <input type="date" id="mt-${rowId}" value="${esc(cell(r, dateCol))}">
     <div class="foot">
-      <button class="btn" onclick="doYeniDurum(${rowId})">Kaydet</button>
-      <button class="btn ghost" onclick="closeModal()">Vazgeç</button>
+      <button class="btn" onclick="doYeniDurum(${rowId})">${t("kaydet")}</button>
+      <button class="btn ghost" onclick="closeModal()">${t("vazgec")}</button>
     </div>`);
 }
 async function doYeniDurum(rowId){
@@ -469,7 +546,7 @@ async function doYeniDurum(rowId){
   const cells = [];
   if (nd !== cell(r, LC["Durum"])){ cells.push({ columnId: LC["Durum"], value: nd }); cells.push(...histCells(r, nd)); }
   if (ndate !== cell(r, dateCol)) cells.push({ columnId: dateCol, value: ndate || "" });
-  if (!cells.length){ closeModal(); toast("Değişiklik yok"); return; }
+  if (!cells.length){ closeModal(); toast(t("degisiklikYok")); return; }
   await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId, cells }] });
   closeModal();
   await refreshAll(); show("pipeline");
@@ -481,8 +558,8 @@ function renderSiniflar(){
   const upcoming = rows.filter(r => cell(r, TC["End date"]) >= today()).sort((a,b)=>cell(a,TC["Start date"]).localeCompare(cell(b,TC["Start date"])));
   const past = rows.filter(r => cell(r, TC["End date"]) < today()).sort((a,b)=>cell(b,TC["Start date"]).localeCompare(cell(a,TC["Start date"])));
   document.getElementById("v-siniflar").innerHTML =
-    `<div class="sec">Yaklaşan sınıflar</div>` + (upcoming.map(trainCard).join("") || `<div class="card"><p class="meta">Yaklaşan sınıf yok.</p></div>`) +
-    `<div class="sec">Geçmiş / kapalı</div>` + past.slice(0,12).map(trainCard).join("");
+    `<div class="sec">${t("yaklasanSiniflar")}</div>` + (upcoming.map(trainCard).join("") || `<div class="card"><p class="meta">${t("yaklasanYok")}</p></div>`) +
+    `<div class="sec">${t("gecmisKapali")}</div>` + past.slice(0,12).map(trainCard).join("");
 }
 function trainCard(r){
   const reg = Number(rawCell(r, TC["Regstrd"]))||0, cap = Number(rawCell(r, TC["Cap"]))||0;
@@ -493,16 +570,16 @@ function trainCard(r){
     <div class="row"><h3>${esc(cell(r, TC["Training"]))}</h3>
       <span class="chip">${esc(cell(r, TC["Lang."]))}</span>
       <span class="chip ${st==="Cancelled"?"warn":(st==="Delivered"?"ok":"acc")}">${esc(st)}</span></div>
-    <p class="meta">${esc(cell(r, TC["Start date"]))} → ${esc(cell(r, TC["End date"]))} · ${fmtTL(Number(rawCell(r, TC["Price TRY"])))} / koltuk</p>
+    <p class="meta">${esc(cell(r, TC["Start date"]))} → ${esc(cell(r, TC["End date"]))} · ${fmtTL(Number(rawCell(r, TC["Price TRY"])))} ${t("perKoltuk")}</p>
     <div class="bar"><i style="width:${pct}%"></i></div>
-    <p class="meta">${reg}/${cap} koltuk · gerçekleşen: ${fmtTL(Number(rawCell(r, TC["Realized Income"]))||reg*Number(rawCell(r, TC["Price TRY"])))}</p>
-    <details><summary style="cursor:pointer; font-size:13px; color:var(--brand); font-weight:600">Düzenle</summary>
+    <p class="meta">${reg}/${cap} ${t("koltukKisa")} · ${t("gerceklesen")}: ${fmtTL(Number(rawCell(r, TC["Realized Income"]))||reg*Number(rawCell(r, TC["Price TRY"])))}</p>
+    <details><summary style="cursor:pointer; font-size:13px; color:var(--brand); font-weight:600">${t("duzenle")}</summary>
       <div class="grid2">
-        <div><label class="f">Kayıtlı (Regstrd)</label><input type="text" id="tr-${r.id}" value="${reg}" inputmode="numeric"></div>
+        <div><label class="f">${t("kayitliReg")}</label><input type="text" id="tr-${r.id}" value="${reg}" inputmode="numeric"></div>
         <div><label class="f">Status</label><select id="ts-${r.id}">${statuses.map(s=>`<option ${s===st?"selected":""}>${s}</option>`).join("")}</select></div>
       </div>
-      <label class="f">Notes'a ekle</label><textarea id="tn-${r.id}" placeholder="örn. 2. koltuk: Ad Soyad (kayıt tarihi)"></textarea>
-      <div class="foot"><button class="btn" onclick="saveTrain(${r.id})">Kaydet</button></div>
+      <label class="f">${t("notesEkle")}</label><textarea id="tn-${r.id}" placeholder="${t("notesOrnek")}"></textarea>
+      <div class="foot"><button class="btn" onclick="saveTrain(${r.id})">${t("kaydet")}</button></div>
     </details>
   </div>`;
 }
@@ -518,12 +595,13 @@ async function saveTrain(rowId){
     const old = cell(r, TC["Notes"]);
     cells.push({ columnId: TC["Notes"], value: (old ? old + " " : "") + note });
   }
-  if (!cells.length){ toast("Değişiklik yok"); return; }
+  if (!cells.length){ toast(t("degisiklikYok")); return; }
   await api({ action:"updateRows", sheetId: CONFIG.SHEET_TRAININGS, rows:[{ id: rowId, cells }] });
   await refreshAll(); show("siniflar");
 }
 
 function renderAll(){ renderPanel(); renderBugun(); renderPipeline(); renderSiniflar(); }
+applyChrome();
 boot();
 </script>
 </body>
