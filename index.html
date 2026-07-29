@@ -132,10 +132,10 @@ const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 let session = null;
 let LEADS = null, TRAIN = null; // raw sheets
 let LC = {}, TC = {};           // column title -> id maps
-let durumFilter = "Hepsi", searchQ = "", pipeSort = "takip", pipeMode = null, sinifTip = "Hepsi", sinifDil = "Hepsi";
+let durumFilter = "Hepsi", searchQ = "", pipeSort = "takip", pipeMode = null, sinifTip = "Hepsi", sinifDil = "Hepsi", wonSub = "Hepsi";
 
 // ---------- v3.1: language (UI chrome only; sheet data stays TR) ----------
-const APP_VERSION = "v3.6";
+const APP_VERSION = "v3.7";
 let LANG = "tr";
 try{ LANG = localStorage.getItem("cn_lang") || "tr"; }catch(_){}
 const STR = {
@@ -203,6 +203,9 @@ const STR = {
   eklendi:["Yeni lead eklendi","New lead added"],
   secilmedi:["(seçilmedi)","(none)"],
   mevcut:["mevcut","current"],
+  hata:["Hata","Error"],
+  wonYaklasan:["Yaklaşan kaydı","Upcoming registration"],
+  wonMezun:["Mezun (geçmiş sınıf)","Alumni (past class)"],
   sirala:["Sırala","Sort"], sTakip:["Takip tarihi","Follow-up"], sIsim:["İsim A-Z","Name A-Z"],
   sTalep:["Talep (yeni önce)","Request (newest)"], sDurum:["Durum","Status"],
   panelFiltre:["Panel filtresi","Panel filter"],
@@ -307,6 +310,17 @@ function gotoPipe(mode){
   else { pipeMode = mode; durumFilter = "Hepsi"; }
   renderPipeline(); show("pipeline");
 }
+function wonWhere(r){
+  const name = cell(r, LC["Ad Soyad"]);
+  if (!name) return "none";
+  let up = false, past = false;
+  (TRAIN.rows||[]).forEach(row2 => {
+    const n = cell(row2, TC["Notes"]);
+    if (!n || !n.includes(name)) return;
+    if (cell(row2, TC["End date"]) >= today()) up = true; else past = true;
+  });
+  return up ? "upcoming" : (past ? "past" : "none");
+}
 const OPEN_DURUM = ["Yeni Talep","Bilgi Verildi","Düşünüyor","Takipte"];
 function leadRows(){ return (LEADS.rows||[]).filter(r => cell(r, LC["Ad Soyad"])); }
 function isOverdue(r){
@@ -332,8 +346,12 @@ function renderPanel(){
   const won = rows.filter(r => cell(r, LC["Durum"]) === "Kayıt Oldu").length;
 
   const up = (TRAIN.rows||[]).filter(r => cell(r, TC["End date"]) >= today() && cell(r, TC["Status"]) !== "Cancelled" && cell(r, TC["Training"]) !== "TOTAL");
-  let seats = 0, cap = 0, realized = 0;
-  up.forEach(r => { seats += Number(rawCell(r, TC["Regstrd"]))||0; cap += Number(rawCell(r, TC["Cap"]))||0; realized += Number(rawCell(r, TC["Realized Income"]))||0; });
+  let seats = 0, realized = 0;
+  up.forEach(r => {
+    const rg = Number(rawCell(r, TC["Regstrd"]))||0;
+    seats += rg;
+    if (rg > 0) realized += Number(rawCell(r, TC["Realized Income"]))||0; // only classes with paid seats
+  });
 
   const byDurum = {}; rows.forEach(r => { const d = cell(r, LC["Durum"]) || "(boş)"; byDurum[d] = (byDurum[d]||0)+1; });
   const byKaynak = {}; rows.forEach(r => { const k = cell(r, LC["Kaynak*"] ?? LC["Kaynak"]) || "(boş)"; byKaynak[k] = (byKaynak[k]||0)+1; });
@@ -344,7 +362,7 @@ function renderPanel(){
       <div class="tile click ${overdue.length? "bad":""}" id="tile-overdue" onclick="gotoPipe('overdue')"><div class="n">${overdue.length}</div><div class="l">${t("takibiGecmis")}</div></div>
       <div class="tile click ${dateless.length? "bad":""}" id="tile-dateless" onclick="gotoPipe('dateless')"><div class="n">${dateless.length}</div><div class="l">${t("tarihiEksik")}</div></div>
       <div class="tile click good" id="tile-won" onclick="gotoPipe('won')"><div class="n">${won}</div><div class="l">${t("kayitToplam")}</div></div>
-      <div class="tile click" id="tile-seats" onclick="show('siniflar')"><div class="n">${seats}/${cap}</div><div class="l">${t("koltukTile")}</div></div>
+      <div class="tile click" id="tile-seats" onclick="show('siniflar')"><div class="n">${seats}</div><div class="l">${t("koltukTile")}</div></div>
       <div class="tile click good" id="tile-rev" onclick="show('siniflar')"><div class="n">${fmtTL(realized)}</div><div class="l">${t("gelirTile")}</div></div>
     </div>
     <div class="card"><h3>${t("durumDagilimi")}</h3><div class="row">${Object.entries(byDurum).map(([k,v])=>`<span class="chip">${esc(k)}: ${v}</span>`).join("")}</div></div>
@@ -403,7 +421,9 @@ async function saveDay(rowId, tick){
   if (tick) cells.push({ columnId: LC["Yapıldı"], value: true });
   if (!cells.length){ toast(t("degisiklikYok")); return; }
   const wasKayit = cell(r, LC["Durum"]) === "Kayıt Oldu" && nd !== "Kayıt Oldu";
-  await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId, cells }] });
+  try{
+    await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId, cells }] });
+  }catch(e){ toast(t("hata") + ": " + e.message); return; }
   await refreshAll(); show("bugun");
   if (wasKayit) toast(t("koltukUyari"));
 }
@@ -418,6 +438,7 @@ function renderPipeline(){
   else if (pipeMode === "overdue") rows = rows.filter(isOverdue);
   else if (pipeMode === "dateless") rows = rows.filter(isDateless);
   if (durumFilter !== "Hepsi") rows = rows.filter(r => cell(r, LC["Durum"]) === durumFilter);
+  if (durumFilter === "Kayıt Oldu" && wonSub !== "Hepsi") rows = rows.filter(r => wonWhere(r) === (wonSub === "up" ? "upcoming" : "past"));
   if (searchQ) rows = rows.filter(r => cell(r, LC["Ad Soyad"]).toLowerCase().includes(searchQ) || cell(r, LC["Notlar"]).toLowerCase().includes(searchQ));
   const dateCol = LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"];
   if (pipeSort === "isim") rows.sort((a,b)=>cell(a,LC["Ad Soyad"]).localeCompare(cell(b,LC["Ad Soyad"]),"tr"));
@@ -442,6 +463,7 @@ function renderPipeline(){
     </div>
     <input class="search" placeholder="${t("ara")}" value="${esc(searchQ)}" oninput="searchQ=this.value.toLowerCase(); renderPipeline()">
     <div class="filters">${durums.map(d=>`<button class="${d===durumFilter?"on":""}" onclick="durumFilter='${d}'; renderPipeline()">${d==="Hepsi" ? t("hepsi") : d}</button>`).join("")}</div>
+    ${durumFilter==="Kayıt Oldu" ? `<div class="filters">${[["Hepsi","Hepsi"],[t("wonYaklasan"),"up"],[t("wonMezun"),"past"]].map(([lbl,val])=>`<button class="${val===wonSub?"on":""}" onclick="wonSub='${val}'; renderPipeline()">${val==="Hepsi" ? t("hepsi") : lbl}</button>`).join("")}</div>` : ""}
     ${rows.map(r => leadCard(r)).join("") || `<div class="card"><p class="meta">${t("kayitYokList")}</p></div>`}`;
 }
 function leadCard(r){
@@ -491,31 +513,34 @@ function leadCard(r){
 async function saveLead(rowId){
   const r = leadRows().find(x => x.id === rowId);
   const dateCol = LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"];
-  const cells = [];
+  const cells = [], changed = [];
   const nd = document.getElementById("pd-"+rowId).value;
-  if (nd !== cell(r, LC["Durum"])){ cells.push({ columnId: LC["Durum"], value: nd }); cells.push(...histCells(r, nd)); }
+  if (nd !== cell(r, LC["Durum"])){ cells.push({ columnId: LC["Durum"], value: nd }); cells.push(...histCells(r, nd)); changed.push(t("durumLbl")); }
   const nt = document.getElementById("pt-"+rowId).value;
-  if (nt !== cell(r, dateCol)) cells.push({ columnId: dateCol, value: nt || "" });
+  if (nt !== cell(r, dateCol)){ cells.push({ columnId: dateCol, value: nt || "" }); changed.push(t("sonrakiTarih")); }
   const ng = document.getElementById("pg-"+rowId).value.trim();
-  if (ng !== cell(r, LC["GSM"])) cells.push({ columnId: LC["GSM"], value: ng });
+  if (ng !== cell(r, LC["GSM"])){ cells.push({ columnId: LC["GSM"], value: ng }); changed.push("GSM"); }
   const ne = document.getElementById("pe-"+rowId).value.trim();
-  if (ne !== cell(r, LC["Eposta"])) cells.push({ columnId: LC["Eposta"], value: ne });
+  if (ne !== cell(r, LC["Eposta"])){ cells.push({ columnId: LC["Eposta"], value: ne }); changed.push("Eposta"); }
   const nk = document.getElementById("pk-"+rowId).value;
-  if (nk) cells.push({ columnId: LC["Kaynak*"] ?? LC["Kaynak"], objectValue: { objectType: "MULTI_PICKLIST", values: [nk] }, strict: false });
+  if (nk){ cells.push({ columnId: LC["Kaynak*"] ?? LC["Kaynak"], objectValue: { objectType: "MULTI_PICKLIST", values: [nk] }, strict: false }); changed.push("Kaynak"); }
   document.querySelectorAll(".plCourse-"+rowId).forEach(cb => {
     const cur = rawCell(r, LC[cb.value]) === true;
-    if (cb.checked !== cur) cells.push({ columnId: LC[cb.value], value: cb.checked });
+    if (cb.checked !== cur){ cells.push({ columnId: LC[cb.value], value: cb.checked }); changed.push((cb.checked ? "+" : "-") + cb.value); }
   });
   const note = document.getElementById("pn-"+rowId).value.trim();
   if (note){
     const old = cell(r, LC["Notlar"]);
     cells.push({ columnId: LC["Notlar"], value: `[${today()}] ${note}` + (old ? "\n\n" + old : "") });
+    changed.push("Notlar");
   }
   if (!cells.length){ toast(t("degisiklikYok")); return; }
   const wasKayit = cell(r, LC["Durum"]) === "Kayıt Oldu" && nd !== "Kayıt Oldu";
-  await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId, cells }] });
+  try{
+    await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId, cells }] });
+  }catch(e){ toast(t("hata") + ": " + e.message); return; }
   await refreshAll(); show("pipeline");
-  if (wasKayit) toast(t("koltukUyari"));
+  toast(wasKayit ? t("koltukUyari") : t("guncellendi") + ": " + changed.join(", "));
 }
 
 // ---------- v3: durum geçmişi + modal + tek-dokunuş kayıt ----------
@@ -693,8 +718,10 @@ function renderSiniflar(){
   document.getElementById("v-siniflar").innerHTML =
     `<div class="filters">${TIPS.map(x=>`<button class="${x===sinifTip?"on":""}" onclick="sinifTip='${x}'; renderSiniflar()">${x==="Hepsi" ? t("hepsi") : x}</button>`).join("")}</div>` +
     `<div class="filters">${DILS.map(([lbl,val])=>`<button class="${val===sinifDil?"on":""}" onclick="sinifDil='${val}'; renderSiniflar()">${lbl==="Hepsi" ? t("hepsi") : lbl}</button>`).join("")}</div>` +
-    `<div class="sec">${t("yaklasanSiniflar")}</div>` + (upcoming.map(trainCard).join("") || `<div class="card"><p class="meta">${t("yaklasanYok")}</p></div>`) +
-    `<div class="sec">${t("gecmisKapali")}</div>` + past.slice(0,12).map(trainCard).join("");
+    `<details class="secfold" open><summary class="sec" style="cursor:pointer">${t("yaklasanSiniflar")} (${upcoming.length})</summary>` +
+      (upcoming.map(trainCard).join("") || `<div class="card"><p class="meta">${t("yaklasanYok")}</p></div>`) + `</details>` +
+    `<details class="secfold"><summary class="sec" style="cursor:pointer">${t("gecmisKapali")} (${past.length})</summary>` +
+      past.slice(0,12).map(trainCard).join("") + `</details>`;
 }
 function trainCard(r){
   const reg = Number(rawCell(r, TC["Regstrd"]))||0, cap = Number(rawCell(r, TC["Cap"]))||0;
@@ -731,7 +758,9 @@ async function saveTrain(rowId){
     cells.push({ columnId: TC["Notes"], value: (old ? old + " " : "") + note });
   }
   if (!cells.length){ toast(t("degisiklikYok")); return; }
-  await api({ action:"updateRows", sheetId: CONFIG.SHEET_TRAININGS, rows:[{ id: rowId, cells }] });
+  try{
+    await api({ action:"updateRows", sheetId: CONFIG.SHEET_TRAININGS, rows:[{ id: rowId, cells }] });
+  }catch(e){ toast(t("hata") + ": " + e.message); return; }
   await refreshAll(); show("siniflar");
 }
 
