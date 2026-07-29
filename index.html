@@ -72,6 +72,8 @@
   #modalWrap .modal{background:var(--card); border-radius:16px 16px 0 0; padding:18px 18px 24px; width:100%; max-width:520px; max-height:85vh; overflow:auto}
   @media(min-width:640px){ #modalWrap{align-items:center; padding:20px} #modalWrap .modal{border-radius:16px} }
   .tagrow{display:flex; gap:6px; flex-wrap:wrap}
+  .tile.click{cursor:pointer; user-select:none} .tile.click:active{transform:scale(.98)}
+  .chipbtn{border:none; cursor:pointer}
 </style>
 </head>
 <body>
@@ -130,10 +132,10 @@ const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 let session = null;
 let LEADS = null, TRAIN = null; // raw sheets
 let LC = {}, TC = {};           // column title -> id maps
-let durumFilter = "Hepsi", searchQ = "";
+let durumFilter = "Hepsi", searchQ = "", pipeSort = "takip", pipeMode = null, sinifTip = "Hepsi", sinifDil = "Hepsi";
 
 // ---------- v3.1: language (UI chrome only; sheet data stays TR) ----------
-const APP_VERSION = "v3.4";
+const APP_VERSION = "v3.5";
 let LANG = "tr";
 try{ LANG = localStorage.getItem("cn_lang") || "tr"; }catch(_){}
 const STR = {
@@ -200,6 +202,12 @@ const STR = {
   adGerekli:["Ad Soyad gerekli","Full name is required"],
   eklendi:["Yeni lead eklendi","New lead added"],
   secilmedi:["(seçilmedi)","(none)"],
+  sirala:["Sırala","Sort"], sTakip:["Takip tarihi","Follow-up"], sIsim:["İsim A-Z","Name A-Z"],
+  sTalep:["Talep (yeni önce)","Request (newest)"], sDurum:["Durum","Status"],
+  panelFiltre:["Panel filtresi","Panel filter"],
+  zatenKayitli:["Bu isim sınıfın Notes'unda zaten var; koltuk TEKRAR ARTIRILMADI","Name already in class Notes; seat NOT incremented again"],
+  koltukUyari:["Dikkat: koltuk otomatik düşmez, Sınıflar'dan elle azaltın","Warning: the seat does not auto-decrease, adjust manually in Classes"],
+  eksik:["Eksik: ","Missing: "],
 };
 function t(k){ const v = STR[k]; return v ? v[LANG==="en"?1:0] : k; }
 function toggleLang(){
@@ -293,6 +301,11 @@ function show(v){
     document.getElementById("tab-"+x).classList.toggle("on", x===v);
   });
 }
+function gotoPipe(mode){
+  if (mode === "won"){ pipeMode = null; durumFilter = "Kayıt Oldu"; }
+  else { pipeMode = mode; durumFilter = "Hepsi"; }
+  renderPipeline(); show("pipeline");
+}
 const OPEN_DURUM = ["Yeni Talep","Bilgi Verildi","Düşünüyor","Takipte"];
 function leadRows(){ return (LEADS.rows||[]).filter(r => cell(r, LC["Ad Soyad"])); }
 function isOverdue(r){
@@ -326,12 +339,12 @@ function renderPanel(){
 
   document.getElementById("v-panel").innerHTML = `
     <div class="tiles">
-      <div class="tile"><div class="n">${open.length}</div><div class="l">${t("acikLead")}</div></div>
-      <div class="tile ${overdue.length? "bad":""}"><div class="n">${overdue.length}</div><div class="l">${t("takibiGecmis")}</div></div>
-      <div class="tile ${dateless.length? "bad":""}"><div class="n">${dateless.length}</div><div class="l">${t("tarihiEksik")}</div></div>
-      <div class="tile good"><div class="n">${won}</div><div class="l">${t("kayitToplam")}</div></div>
-      <div class="tile"><div class="n">${seats}/${cap}</div><div class="l">${t("koltukTile")}</div></div>
-      <div class="tile good"><div class="n">${fmtTL(realized)}</div><div class="l">${t("gelirTile")}</div></div>
+      <div class="tile click" id="tile-open" onclick="gotoPipe('open')"><div class="n">${open.length}</div><div class="l">${t("acikLead")}</div></div>
+      <div class="tile click ${overdue.length? "bad":""}" id="tile-overdue" onclick="gotoPipe('overdue')"><div class="n">${overdue.length}</div><div class="l">${t("takibiGecmis")}</div></div>
+      <div class="tile click ${dateless.length? "bad":""}" id="tile-dateless" onclick="gotoPipe('dateless')"><div class="n">${dateless.length}</div><div class="l">${t("tarihiEksik")}</div></div>
+      <div class="tile click good" id="tile-won" onclick="gotoPipe('won')"><div class="n">${won}</div><div class="l">${t("kayitToplam")}</div></div>
+      <div class="tile click" id="tile-seats" onclick="show('siniflar')"><div class="n">${seats}/${cap}</div><div class="l">${t("koltukTile")}</div></div>
+      <div class="tile click good" id="tile-rev" onclick="show('siniflar')"><div class="n">${fmtTL(realized)}</div><div class="l">${t("gelirTile")}</div></div>
     </div>
     <div class="card"><h3>${t("durumDagilimi")}</h3><div class="row">${Object.entries(byDurum).map(([k,v])=>`<span class="chip">${esc(k)}: ${v}</span>`).join("")}</div></div>
     <div class="card"><h3>${t("kaynakDagilimi")}</h3><div class="row">${Object.entries(byKaynak).map(([k,v])=>`<span class="chip">${esc(k)}: ${v}</span>`).join("")}</div>
@@ -388,8 +401,10 @@ async function saveDay(rowId, tick){
   if (ndate && ndate !== cell(r, dateCol)) cells.push({ columnId: dateCol, value: ndate });
   if (tick) cells.push({ columnId: LC["Yapıldı"], value: true });
   if (!cells.length){ toast(t("degisiklikYok")); return; }
+  const wasKayit = cell(r, LC["Durum"]) === "Kayıt Oldu" && nd !== "Kayıt Oldu";
   await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId, cells }] });
   await refreshAll(); show("bugun");
+  if (wasKayit) toast(t("koltukUyari"));
 }
 function completeStep(rowId){ saveDay(rowId, true); }
 
@@ -398,11 +413,32 @@ function renderPipeline(){
   const el = document.getElementById("v-pipeline");
   const durums = ["Hepsi","Yeni Talep","Bilgi Verildi","Düşünüyor","Takipte","Kayıt Oldu","Kaybedildi","Kapsam Dışı"];
   let rows = leadRows();
+  if (pipeMode === "open") rows = rows.filter(r => OPEN_DURUM.includes(cell(r, LC["Durum"])));
+  else if (pipeMode === "overdue") rows = rows.filter(isOverdue);
+  else if (pipeMode === "dateless") rows = rows.filter(isDateless);
   if (durumFilter !== "Hepsi") rows = rows.filter(r => cell(r, LC["Durum"]) === durumFilter);
   if (searchQ) rows = rows.filter(r => cell(r, LC["Ad Soyad"]).toLowerCase().includes(searchQ) || cell(r, LC["Notlar"]).toLowerCase().includes(searchQ));
-  rows.sort((a,b) => (isOverdue(b)?1:0) - (isOverdue(a)?1:0));
+  const dateCol = LC["Sonraki Adım Tarihi*"] ?? LC["Sonraki Adım Tarihi"];
+  if (pipeSort === "isim") rows.sort((a,b)=>cell(a,LC["Ad Soyad"]).localeCompare(cell(b,LC["Ad Soyad"]),"tr"));
+  else if (pipeSort === "talep") rows.sort((a,b)=>String(cell(b,LC["Talep Tarihi"])).localeCompare(String(cell(a,LC["Talep Tarihi"]))));
+  else if (pipeSort === "durum") rows.sort((a,b)=>durums.indexOf(cell(a,LC["Durum"])) - durums.indexOf(cell(b,LC["Durum"])));
+  else rows.sort((a,b)=>{
+    const ov = (isOverdue(b)?1:0) - (isOverdue(a)?1:0); if (ov) return ov;
+    return String(cell(a,dateCol)||"9999").localeCompare(String(cell(b,dateCol)||"9999"));
+  });
+  const modeChip = pipeMode ? `<button class="chip warn chipbtn" onclick="pipeMode=null; renderPipeline()">${t("panelFiltre")}: ${t(pipeMode==="open"?"acikLead":(pipeMode==="overdue"?"takibiGecmis":"tarihiEksik"))} ✕</button>` : "";
   el.innerHTML = `
-    <div class="row" style="margin-bottom:10px"><button class="btn small accent" onclick="openYeniLead()">${t("yeniLead")}</button></div>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn small accent" onclick="openYeniLead()">${t("yeniLead")}</button>
+      ${modeChip}
+      <span style="flex:1"></span>
+      <select id="pipeSortSel" onchange="pipeSort=this.value; renderPipeline()" style="width:auto; padding:7px 10px; font-size:13px">
+        <option value="takip" ${pipeSort==="takip"?"selected":""}>${t("sirala")}: ${t("sTakip")}</option>
+        <option value="isim" ${pipeSort==="isim"?"selected":""}>${t("sirala")}: ${t("sIsim")}</option>
+        <option value="talep" ${pipeSort==="talep"?"selected":""}>${t("sirala")}: ${t("sTalep")}</option>
+        <option value="durum" ${pipeSort==="durum"?"selected":""}>${t("sirala")}: ${t("sDurum")}</option>
+      </select>
+    </div>
     <input class="search" placeholder="${t("ara")}" value="${esc(searchQ)}" oninput="searchQ=this.value.toLowerCase(); renderPipeline()">
     <div class="filters">${durums.map(d=>`<button class="${d===durumFilter?"on":""}" onclick="durumFilter='${d}'; renderPipeline()">${d==="Hepsi" ? t("hepsi") : d}</button>`).join("")}</div>
     ${rows.map(r => leadCard(r)).join("") || `<div class="card"><p class="meta">${t("kayitYokList")}</p></div>`}`;
@@ -461,8 +497,10 @@ async function saveLead(rowId){
     cells.push({ columnId: LC["Notlar"], value: `[${today()}] ${note}` + (old ? "\n\n" + old : "") });
   }
   if (!cells.length){ toast(t("degisiklikYok")); return; }
+  const wasKayit = cell(r, LC["Durum"]) === "Kayıt Oldu" && nd !== "Kayıt Oldu";
   await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId, cells }] });
   await refreshAll(); show("pipeline");
+  if (wasKayit) toast(t("koltukUyari"));
 }
 
 // ---------- v3: durum geçmişi + modal + tek-dokunuş kayıt ----------
@@ -527,8 +565,9 @@ async function doKayit(rowId){
     await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId,
       cells: [{ columnId: LC["Durum"], value: "Kayıt Oldu" }, ...histCells(r, "Kayıt Oldu")] }] });
   }catch(e){ toast(t("leadYazilamadi") + e.message); document.getElementById("kayitGo").disabled = false; return; }
-  const newReg = (Number(rawCell(coh, TC["Regstrd"]))||0) + 1;
   const oldNotes = cell(coh, TC["Notes"]);
+  if (oldNotes.includes(name)){ closeModal(); await refreshAll(); toast(t("zatenKayitli")); return; }
+  const newReg = (Number(rawCell(coh, TC["Regstrd"]))||0) + 1;
   try{
     await api({ action:"updateRows", sheetId: CONFIG.SHEET_TRAININGS, rows:[{ id: tid, cells: [
       { columnId: TC["Regstrd"], value: newReg },
@@ -562,9 +601,11 @@ async function doYeniDurum(rowId){
   if (nd !== cell(r, LC["Durum"])){ cells.push({ columnId: LC["Durum"], value: nd }); cells.push(...histCells(r, nd)); }
   if (ndate !== cell(r, dateCol)) cells.push({ columnId: dateCol, value: ndate || "" });
   if (!cells.length){ closeModal(); toast(t("degisiklikYok")); return; }
+  const wasKayit = cell(r, LC["Durum"]) === "Kayıt Oldu" && nd !== "Kayıt Oldu";
   await api({ action:"updateRows", sheetId: CONFIG.SHEET_LEADS, rows:[{ id: rowId, cells }] });
   closeModal();
   await refreshAll(); show("pipeline");
+  if (wasKayit) toast(t("koltukUyari"));
 }
 
 // ---------- v3.3: yeni lead ----------
@@ -575,13 +616,13 @@ function openYeniLead(){
     <h3>${t("yeniLeadTitle")}</h3>
     <label class="f">${t("adSoyadLbl")}</label><input type="text" id="nlName">
     <div class="grid2">
-      <div><label class="f">GSM</label><input type="text" id="nlGsm" inputmode="tel"></div>
+      <div><label class="f">GSM *</label><input type="text" id="nlGsm" inputmode="tel"></div>
       <div><label class="f">Eposta</label><input type="text" id="nlMail" inputmode="email"></div>
-      <div><label class="f">${t("kaynakLbl")}</label><select id="nlKaynak">${kOpts}</select></div>
+      <div><label class="f">${t("kaynakLbl")} *</label><select id="nlKaynak">${kOpts}</select></div>
       <div><label class="f">${t("durumLbl")}</label>${durumSelect("nlDurum","Yeni Talep")}</div>
     </div>
     <label class="f">${t("sonrakiTarih")}</label><input type="date" id="nlDate" value="${today()}">
-    <label class="f">${t("ilgilendigi")}</label>
+    <label class="f">${t("ilgilendigi")} *</label>
     <div class="grid2" style="gap:2px">${cboxes}</div>
     <label class="f">${t("ilkNot")}</label><textarea id="nlNote"></textarea>
     <div class="foot">
@@ -591,16 +632,24 @@ function openYeniLead(){
 }
 async function doYeniLead(){
   const name = document.getElementById("nlName").value.trim();
-  if (!name){ toast(t("adGerekli")); return; }
+  const gsm = document.getElementById("nlGsm").value.trim();
+  const mail = document.getElementById("nlMail").value.trim();
+  const kay = document.getElementById("nlKaynak").value;
+  const nCourses = document.querySelectorAll(".nlCourse:checked").length;
+  const missing = [];
+  if (!name) missing.push("Ad Soyad");
+  if (!gsm) missing.push("GSM");
+  if (!kay) missing.push("Kaynak");
+  if (!nCourses) missing.push(t("ilgilendigi"));
+  if (missing.length){ toast(t("eksik") + missing.join(", ")); return; }
   document.getElementById("nlGo").disabled = true;
   const cells = [
     { columnId: LC["Ad Soyad"], value: name },
     { columnId: LC["Talep Tarihi"], value: today() },
+    { columnId: LC["GSM"], value: gsm },
   ];
-  const gsm = document.getElementById("nlGsm").value.trim(); if (gsm) cells.push({ columnId: LC["GSM"], value: gsm });
-  const mail = document.getElementById("nlMail").value.trim(); if (mail) cells.push({ columnId: LC["Eposta"], value: mail });
-  const kay = document.getElementById("nlKaynak").value;
-  if (kay) cells.push({ columnId: LC["Kaynak*"] ?? LC["Kaynak"], objectValue: { objectType: "MULTI_PICKLIST", values: [kay] }, strict: false });
+  if (mail) cells.push({ columnId: LC["Eposta"], value: mail });
+  cells.push({ columnId: LC["Kaynak*"] ?? LC["Kaynak"], objectValue: { objectType: "MULTI_PICKLIST", values: [kay] }, strict: false });
   const du = document.getElementById("nlDurum").value;
   cells.push({ columnId: LC["Durum"], value: du });
   if (LC[HIST_TITLE]) cells.push({ columnId: LC[HIST_TITLE], value: `[${today()}] ${du}` });
@@ -619,10 +668,16 @@ async function doYeniLead(){
 
 // ---------- Sınıflar ----------
 function renderSiniflar(){
-  const rows = (TRAIN.rows||[]).filter(r => cell(r, TC["Training"]) && cell(r, TC["Training"]) !== "TOTAL");
+  const TIPS = ["Hepsi","Roasting","Barista","Sensory","Q Grader"];
+  const DILS = [["Hepsi","Hepsi"],["TR","Turkish"],["EN","English"]];
+  let rows = (TRAIN.rows||[]).filter(r => cell(r, TC["Training"]) && cell(r, TC["Training"]) !== "TOTAL");
+  if (sinifTip !== "Hepsi") rows = rows.filter(r => cell(r, TC["Training"]).toLowerCase().includes(sinifTip.toLowerCase()));
+  if (sinifDil !== "Hepsi") rows = rows.filter(r => cell(r, TC["Lang."]) === sinifDil);
   const upcoming = rows.filter(r => cell(r, TC["End date"]) >= today()).sort((a,b)=>cell(a,TC["Start date"]).localeCompare(cell(b,TC["Start date"])));
   const past = rows.filter(r => cell(r, TC["End date"]) < today()).sort((a,b)=>cell(b,TC["Start date"]).localeCompare(cell(a,TC["Start date"])));
   document.getElementById("v-siniflar").innerHTML =
+    `<div class="filters">${TIPS.map(x=>`<button class="${x===sinifTip?"on":""}" onclick="sinifTip='${x}'; renderSiniflar()">${x==="Hepsi" ? t("hepsi") : x}</button>`).join("")}</div>` +
+    `<div class="filters">${DILS.map(([lbl,val])=>`<button class="${val===sinifDil?"on":""}" onclick="sinifDil='${val}'; renderSiniflar()">${lbl==="Hepsi" ? t("hepsi") : lbl}</button>`).join("")}</div>` +
     `<div class="sec">${t("yaklasanSiniflar")}</div>` + (upcoming.map(trainCard).join("") || `<div class="card"><p class="meta">${t("yaklasanYok")}</p></div>`) +
     `<div class="sec">${t("gecmisKapali")}</div>` + past.slice(0,12).map(trainCard).join("");
 }
