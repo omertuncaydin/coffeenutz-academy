@@ -135,7 +135,7 @@ let LC = {}, TC = {};           // column title -> id maps
 let durumFilter = "Hepsi", searchQ = "", pipeSort = "takip", pipeMode = null, sinifTip = "Hepsi", sinifDil = "Hepsi";
 
 // ---------- v3.1: language (UI chrome only; sheet data stays TR) ----------
-const APP_VERSION = "v3.5";
+const APP_VERSION = "v3.6";
 let LANG = "tr";
 try{ LANG = localStorage.getItem("cn_lang") || "tr"; }catch(_){}
 const STR = {
@@ -202,6 +202,7 @@ const STR = {
   adGerekli:["Ad Soyad gerekli","Full name is required"],
   eklendi:["Yeni lead eklendi","New lead added"],
   secilmedi:["(seçilmedi)","(none)"],
+  mevcut:["mevcut","current"],
   sirala:["Sırala","Sort"], sTakip:["Takip tarihi","Follow-up"], sIsim:["İsim A-Z","Name A-Z"],
   sTalep:["Talep (yeni önce)","Request (newest)"], sDurum:["Durum","Status"],
   panelFiltre:["Panel filtresi","Panel filter"],
@@ -472,7 +473,15 @@ function leadCard(r){
         <div><label class="f">${t("sonrakiTarih")}</label><input type="date" id="pt-${r.id}" value="${esc(d)}"></div>
         <div><label class="f">GSM</label><input type="text" id="pg-${r.id}" value="${esc(cell(r, LC["GSM"]))}"></div>
         <div><label class="f">Eposta</label><input type="text" id="pe-${r.id}" value="${esc(cell(r, LC["Eposta"]))}"></div>
+        <div><label class="f">${t("kaynakLbl")}</label>
+          <select id="pk-${r.id}">
+            <option value="" selected>${esc(cell(r, LC["Kaynak*"] ?? LC["Kaynak"])||t("secilmedi"))} · ${t("mevcut")}</option>
+            ${KAYNAK_OPTS.map(k=>`<option>${esc(k)}</option>`).join("")}
+          </select>
+        </div>
       </div>
+      <label class="f">${t("ilgilendigi")}</label>
+      <div class="grid2" style="gap:2px">${COURSE_LIST.map(k => `<label style="display:flex; align-items:center; gap:6px; font-size:13px; margin:2px 0"><input type="checkbox" class="plCourse-${r.id}" value="${k}" ${rawCell(r, LC[k])===true?"checked":""} style="width:auto">${k}</label>`).join("")}</div>
       <label class="f">${t("notlaraEkle")}</label>
       <textarea id="pn-${r.id}" placeholder="${t("yeniNot")}"></textarea>
       <div class="foot"><button class="btn" onclick="saveLead(${r.id})">${t("kaydet")}</button></div>
@@ -491,6 +500,12 @@ async function saveLead(rowId){
   if (ng !== cell(r, LC["GSM"])) cells.push({ columnId: LC["GSM"], value: ng });
   const ne = document.getElementById("pe-"+rowId).value.trim();
   if (ne !== cell(r, LC["Eposta"])) cells.push({ columnId: LC["Eposta"], value: ne });
+  const nk = document.getElementById("pk-"+rowId).value;
+  if (nk) cells.push({ columnId: LC["Kaynak*"] ?? LC["Kaynak"], objectValue: { objectType: "MULTI_PICKLIST", values: [nk] }, strict: false });
+  document.querySelectorAll(".plCourse-"+rowId).forEach(cb => {
+    const cur = rawCell(r, LC[cb.value]) === true;
+    if (cb.checked !== cur) cells.push({ columnId: LC[cb.value], value: cb.checked });
+  });
   const note = document.getElementById("pn-"+rowId).value.trim();
   if (note){
     const old = cell(r, LC["Notlar"]);
