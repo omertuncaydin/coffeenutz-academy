@@ -79,7 +79,7 @@
     SUPABASE_ANON_KEY: "sb_publishable_GkkPHLQ8Syldn3sbvt1sDw_vKrBxnfZ",
     SHEET_TRAININGS: 8367277466584964,
   };
-  const APP_VERSION = "v2026-09-01a";
+  const APP_VERSION = "v2026-09-01b";
 </script>
 
 <div id="login">
@@ -248,7 +248,7 @@ function render(){
       if (s <= ds && ds <= e){
         const nm = cell(r, TC["Training"]);
         const tp = typeOf(nm);
-        const cls = (cell(r, TC["Status"]) === "Cancelled" ? " cx" : "") + (e < tNow ? " past" : "");
+        const cls = (cell(r, TC["Status"]) === "Cancelled" ? " cx" : "") + (s <= tNow ? " past" : "");
         const label = (ds === s || d === 1) ? esc(shortName(nm)) : "&nbsp;";
         bars += `<span class="tbar${cls}" style="background:var(--c-${tp})" onclick="openTr(${r.id})" title="${esc(nm)}">${label}</span>`;
       }
