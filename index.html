@@ -116,12 +116,14 @@
     <button id="tab-bugun" onclick="show('bugun')">Bugün</button>
     <button id="tab-pipeline" onclick="show('pipeline')">Pipeline</button>
     <button id="tab-siniflar" onclick="show('siniflar')">Sınıflar</button>
+    <button id="tab-teklifler" onclick="show('teklifler')">Öneriler</button>
   </nav>
   <main>
     <div id="v-panel"></div>
     <div id="v-bugun" class="hidden"></div>
     <div id="v-pipeline" class="hidden"></div>
     <div id="v-siniflar" class="hidden"></div>
+    <div id="v-teklifler" class="hidden"></div>
   </main>
 </div>
 <div id="modalWrap" class="hidden" onclick="if(event.target===this) closeModal()"><div class="modal" id="modalBox"></div></div>
@@ -135,7 +137,7 @@ let LC = {}, TC = {};           // column title -> id maps
 let durumFilter = "Hepsi", searchQ = "", pipeSort = "takip", pipeMode = null, sinifTip = "Hepsi", sinifDil = "Hepsi", wonSub = "Hepsi", sinifDolu = false;
 
 // ---------- v3.1: language (UI chrome only; sheet data stays TR) ----------
-const APP_VERSION = "v3.8";
+const APP_VERSION = "v3.9";
 let LANG = "tr";
 try{ LANG = localStorage.getItem("cn_lang") || "tr"; }catch(_){}
 const STR = {
@@ -213,6 +215,20 @@ const STR = {
   zatenKayitli:["Bu isim sınıfın Notes'unda zaten var; koltuk TEKRAR ARTIRILMADI","Name already in class Notes; seat NOT incremented again"],
   koltukUyari:["Dikkat: koltuk otomatik düşmez, Sınıflar'dan elle azaltın","Warning: the seat does not auto-decrease, adjust manually in Classes"],
   eksik:["Eksik: ","Missing: "],
+  tabOneriler:["Öneriler","Offers"],
+  yeniOneri:["YENİ","NEW"],
+  teklifEdilen:["Önerilen tarih","Proposed date"],
+  onerilerYok:["Açık öneri yok.","No open offers."],
+  kapaliOneriler:["Kapalı öneriler","Closed offers"],
+  leadCevir:["Lead'e Çevir","Convert to Lead"],
+  ilgilenildi:["İlgilenildi","Handled"],
+  geriAl:["Geri al","Reopen"],
+  leadOlusturuldu:["Lead oluşturuldu ve pipeline'a eklendi 🎉","Lead created and added to the pipeline 🎉"],
+  cevrildi:["Lead'e çevrildi","Converted to lead"],
+  oneriHata:["Öneriler yüklenemedi","Could not load offers"],
+  oneriHataYardim:["Muhtemel sebep: date-offers-admin fonksiyonu henüz deploy edilmedi veya date_offers tablosu yok. DATE-OFFERS-DEPLOY.md adımlarını tamamlayın.","Likely cause: the date-offers-admin function is not deployed yet or the date_offers table is missing. Complete the DATE-OFFERS-DEPLOY.md steps."],
+  oneriAciklama:["Takvimden gelen tarih önerileri. Pipeline'a otomatik YAZILMAZLAR; siz Lead'e çevirince yazılır.","Date offers from the public calendar. They do NOT enter the pipeline automatically; only when you convert one."],
+  cevirAciklama:["Tek adımda: Eğitim Talepleri'ne Yeni Talep satırı açılır (önerilen tarih → Tarih Tercihi 1, notu → Notlar) ve öneri kapanır.","One step: creates a Yeni Talep row in the leads sheet (offer date → Tarih Tercihi 1, note → Notlar) and closes the offer."],
 };
 function t(k){ const v = STR[k]; return v ? v[LANG==="en"?1:0] : k; }
 function toggleLang(){
@@ -228,6 +244,7 @@ function applyChrome(){
   document.getElementById("btnLogout").textContent = t("cikis");
   document.getElementById("tab-bugun").textContent = t("tabBugun");
   document.getElementById("tab-siniflar").textContent = t("tabSiniflar");
+  updateOffersTab();
 }
 
 // ---------- auth ----------
@@ -279,6 +296,7 @@ async function refreshAll(){
     LC = {}; ld.columns.forEach(c => LC[c.title] = c.id);
     TC = {}; td.columns.forEach(c => TC[c.title] = c.id);
     renderAll(); toast(t("guncellendi"));
+    loadOffers(); // own data source, own error card: never blocks the sheets
   }catch(e){
     const msg = esc(String(e && e.message ? e.message : e));
     ["panel","bugun","pipeline","siniflar"].forEach(v => {
@@ -301,7 +319,7 @@ function fmtTL(n){ return isFinite(n) ? new Intl.NumberFormat("tr-TR").format(n)
 function esc(s){ return String(s??"").replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 function toast(m){ const el = document.getElementById("toast"); el.textContent = m; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"), 1800); }
 function show(v){
-  ["panel","bugun","pipeline","siniflar"].forEach(x => {
+  ["panel","bugun","pipeline","siniflar","teklifler"].forEach(x => {
     document.getElementById("v-"+x).classList.toggle("hidden", x!==v);
     document.getElementById("tab-"+x).classList.toggle("on", x===v);
   });
@@ -773,7 +791,113 @@ async function saveTrain(rowId){
   await refreshAll(); show("siniflar");
 }
 
-function renderAll(){ renderPanel(); renderBugun(); renderPipeline(); renderSiniflar(); }
+// ---------- v3.9: Öneriler (takvimden gelen tarih önerileri; kaynak: Supabase date_offers) ----------
+let OFFERS = null, OFFERS_ERR = null;
+async function offersApi(payload){
+  const r = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/date-offers-admin`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + session.access_token,
+      "apikey": CONFIG.SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || j.message || ("HTTP " + r.status));
+  return j;
+}
+async function loadOffers(){
+  try{
+    const j = await offersApi({ action: "list" });
+    OFFERS = j.offers || []; OFFERS_ERR = null;
+  }catch(e){
+    OFFERS = null; OFFERS_ERR = String(e && e.message ? e.message : e);
+  }
+  renderOffers();
+}
+function offersNewCount(){ return (OFFERS || []).filter(o => o.status === "new").length; }
+function updateOffersTab(){
+  const el = document.getElementById("tab-teklifler");
+  if (!el) return;
+  const n = offersNewCount();
+  el.textContent = t("tabOneriler") + (n ? ` (${n})` : "");
+}
+function pad0(n){ return String(n).padStart(2, "0"); }
+function fmtDT(s){
+  if (!s) return "";
+  const d = new Date(s);
+  if (isNaN(d)) return String(s);
+  return `${pad0(d.getDate())}.${pad0(d.getMonth() + 1)}.${d.getFullYear()} ${pad0(d.getHours())}:${pad0(d.getMinutes())}`;
+}
+function offerCard(o){
+  const mail = String(o.contact || "").includes("@");
+  const contact = mail
+    ? `<a href="mailto:${esc(o.contact)}">${esc(o.contact)}</a>`
+    : `<a href="tel:${esc(o.contact)}">${esc(o.contact)}</a>`;
+  const st = o.status === "converted"
+    ? `<span class="chip ok">${t("cevrildi")} ✓</span>`
+    : (o.status === "handled" ? `<span class="chip">${t("ilgilenildi")}</span>` : `<span class="chip acc">${t("yeniOneri")}</span>`);
+  return `<div class="card">
+    <div class="row"><h3>${esc(o.name)}</h3>${st}<span class="chip">${esc(String(o.lang || "tr").toUpperCase())}</span>${o.wa_ping === "sent" ? `<span class="chip ok">WA ✓</span>` : ""}</div>
+    <p class="meta"><b>${t("teklifEdilen")}: ${esc(o.offer_date)}</b> · ${esc(o.training)}</p>
+    <p class="meta">${contact} · ${fmtDT(o.created_at)}</p>
+    ${o.note ? `<div class="pre">${esc(o.note)}</div>` : ""}
+    ${o.status === "converted" ? "" : `<div class="foot">
+      <button class="btn small accent" onclick="openConvert('${o.id}')">${t("leadCevir")}</button>
+      ${o.status === "new"
+        ? `<button class="btn small ghost" onclick="setOfferStatus('${o.id}','handled')">${t("ilgilenildi")}</button>`
+        : `<button class="btn small ghost" onclick="setOfferStatus('${o.id}','new')">${t("geriAl")}</button>`}
+    </div>`}
+  </div>`;
+}
+function renderOffers(){
+  updateOffersTab();
+  const el = document.getElementById("v-teklifler");
+  if (!el) return;
+  if (OFFERS_ERR){
+    el.innerHTML = `<div class="card"><h3>${t("oneriHata")}</h3><div class="pre">${esc(OFFERS_ERR)}</div>
+      <p class="meta">${t("oneriHataYardim")}</p>
+      <div class="foot"><button class="btn" onclick="loadOffers()">${t("tekrarDene")}</button></div></div>`;
+    return;
+  }
+  if (OFFERS === null){ el.innerHTML = `<div class="card"><p class="meta">${t("yukleniyor")}</p></div>`; return; }
+  const open = OFFERS.filter(o => o.status === "new");
+  const closed = OFFERS.filter(o => o.status !== "new");
+  el.innerHTML = `
+    <p class="meta" style="margin:2px 0 10px">${t("oneriAciklama")}</p>
+    ${open.map(offerCard).join("") || `<div class="card"><p class="meta">${t("onerilerYok")}</p></div>`}
+    ${closed.length ? `<details class="secfold"><summary class="sec" style="cursor:pointer">${t("kapaliOneriler")} (${closed.length})</summary>${closed.map(offerCard).join("")}</details>` : ""}`;
+}
+async function setOfferStatus(id, st){
+  try{ await offersApi({ action: "setStatus", id, status: st }); }
+  catch(e){ toast(t("hata") + ": " + e.message); return; }
+  await loadOffers();
+  toast(t("guncellendi"));
+}
+function openConvert(id){
+  const o = (OFFERS || []).find(x => x.id === id);
+  if (!o) return;
+  openModal(`
+    <h3>${t("leadCevir")}: ${esc(o.name)}</h3>
+    <p class="meta">${esc(o.offer_date)} · ${esc(o.training)} · ${esc(o.contact)}</p>
+    <p class="meta">${t("cevirAciklama")}</p>
+    <div class="foot">
+      <button class="btn accent" id="cvGo" onclick="doConvert('${o.id}')">${t("leadCevir")}</button>
+      <button class="btn ghost" onclick="closeModal()">${t("vazgec")}</button>
+    </div>`);
+}
+async function doConvert(id){
+  document.getElementById("cvGo").disabled = true;
+  try{ await offersApi({ action: "convert", id }); }
+  catch(e){ toast(t("hata") + ": " + e.message); document.getElementById("cvGo").disabled = false; return; }
+  closeModal();
+  await refreshAll(); // pulls the new lead into the pipeline; loadOffers runs inside
+  show("teklifler");
+  toast(t("leadOlusturuldu"));
+}
+
+function renderAll(){ renderPanel(); renderBugun(); renderPipeline(); renderSiniflar(); renderOffers(); }
 applyChrome();
 boot();
 </script>
