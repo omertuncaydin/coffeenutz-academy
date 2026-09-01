@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CoffeeNutz Eğitim Takvimi</title>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=2">
+<link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png?v=2">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --bg:#f7f2ec; --card:#ffffff; --ink:#2b1d14; --muted:#8a7263;
+    --brand:#6f4e37; --accent:#e07b39; --ok:#2e7d32; --warn:#c62828; --line:#e7dcd2;
+    --chip:#f0e6dc;
+    --c-roast:#e07b39; --c-bar:#6f4e37; --c-sens:#2e7d32; --c-q:#a2551b; --c-other:#8a7263;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  body{margin:0; font-family:-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink)}
+  button{font:inherit; cursor:pointer}
+  .hidden{display:none!important}
+
+  #login{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px}
+  .loginCard{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:28px; width:100%; max-width:380px; box-shadow:0 6px 24px rgba(43,29,20,.08)}
+  .loginCard h1{font-size:20px; margin:0 0 4px} .loginCard p{color:var(--muted); margin:0 0 18px; font-size:14px}
+  .loginCard input{width:100%; padding:13px 14px; margin-bottom:10px; border:1px solid var(--line); border-radius:10px; font-size:15px}
+  .btn{display:inline-block; background:var(--brand); color:#fff; border:none; border-radius:10px; padding:13px 18px; font-size:15px; font-weight:600}
+  .btn.full{width:100%} .btn.ghost{background:var(--chip); color:var(--ink)} .btn.small{padding:8px 12px; font-size:13px; border-radius:8px}
+
+  header{position:sticky; top:0; z-index:10; background:var(--brand); color:#fff; padding:12px 16px; display:flex; align-items:center; gap:10px}
+  header .logo{font-weight:700; font-size:15px} header .sp{flex:1}
+  header .who{font-size:12px; opacity:.85}
+  main{padding:14px; max-width:900px; margin:0 auto}
+
+  .toolbar{display:flex; align-items:center; gap:8px; margin-bottom:10px}
+  .mtitle{font-size:18px; font-weight:800; flex:1; text-align:center}
+  .legend{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px}
+  .lg{display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); background:var(--card); border:1px solid var(--line); border-radius:99px; padding:3px 9px}
+  .lg i{width:9px; height:9px; border-radius:3px; display:inline-block}
+
+  .cal{background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden}
+  .dows{display:grid; grid-template-columns:repeat(7,1fr); background:var(--chip); font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
+  .dows div{padding:7px 6px; text-align:center}
+  .days{display:grid; grid-template-columns:repeat(7,1fr)}
+  .day{min-height:78px; border-top:1px solid var(--line); border-left:1px solid var(--line); padding:3px; overflow:hidden}
+  .day:nth-child(7n+1){border-left:none}
+  .day.blank{background:var(--bg)}
+  .day .dn{font-size:11px; font-weight:600; color:var(--muted); padding:1px 3px; display:inline-block}
+  .day.today{background:#fdeadb}
+  .day.today .dn{background:var(--accent); color:#fff; border-radius:6px}
+  .tbar{display:block; font-size:10px; font-weight:600; color:#fff; border-radius:4px; padding:2px 4px; margin:2px 0 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; min-height:14px}
+  .tbar.cx{opacity:.35; text-decoration:line-through}
+  .tbar.past{opacity:.55}
+
+  .sec{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:16px 0 8px; font-weight:700}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:8px; cursor:pointer}
+  .row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .chip{background:var(--chip); border-radius:999px; padding:3px 10px; font-size:12px; font-weight:600}
+  .chip.warn{background:#fde3e3; color:var(--warn)} .chip.ok{background:#e2f2e3; color:var(--ok)} .chip.acc{background:#fdeadb; color:#a2551b}
+  .meta{font-size:12px; color:var(--muted)}
+  .pre{white-space:pre-wrap; font-size:13px; background:var(--bg); border-radius:10px; padding:10px; margin:8px 0 0}
+  .dotc{width:10px; height:10px; border-radius:3px; display:inline-block; flex:none}
+  .foot{display:flex; gap:8px; margin-top:10px}
+
+  #modalWrap{position:fixed; inset:0; background:rgba(43,29,20,.45); z-index:60; display:flex; align-items:flex-end; justify-content:center}
+  #modalWrap .modal{background:var(--card); border-radius:16px 16px 0 0; padding:18px 18px 24px; width:100%; max-width:520px; max-height:85vh; overflow:auto}
+  @media(min-width:640px){ #modalWrap{align-items:center; padding:20px} #modalWrap .modal{border-radius:16px} }
+  .modal h3{margin:0 0 6px}
+
+  #toast{position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 18px; border-radius:99px; font-size:14px; opacity:0; transition:.25s; pointer-events:none; z-index:99}
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<script>
+  const CONFIG = {
+    SUPABASE_URL: "https://efjvfggwnhqkunjvoyjb.supabase.co",
+    SUPABASE_ANON_KEY: "sb_publishable_GkkPHLQ8Syldn3sbvt1sDw_vKrBxnfZ",
+    SHEET_TRAININGS: 8367277466584964,
+  };
+  const APP_VERSION = "v2026-09-01a";
+</script>
+
+<div id="login">
+  <div class="loginCard">
+    <h1>CoffeeNutz Eğitim Takvimi</h1>
+    <p>Tüm eğitimler tek takvimde. Giriş yapın.</p>
+    <input id="email" type="email" placeholder="E-posta" autocomplete="username" />
+    <input id="pass" type="password" placeholder="Şifre" autocomplete="current-password" />
+    <button class="btn full" onclick="doLogin()">Giriş</button>
+    <p id="loginMsg" style="color:var(--warn); min-height:18px"></p>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <span class="logo">🐢 Eğitim Takvimi</span>
+    <span class="sp"></span>
+    <span class="who" id="who"></span>
+    <span class="who" id="ver" style="opacity:.6"></span>
+    <button class="btn small ghost" onclick="refreshAll()">Yenile</button>
+    <button class="btn small ghost" onclick="doLogout()">Çıkış</button>
+  </header>
+  <main>
+    <div class="toolbar">
+      <button class="btn small ghost" id="btnPrev" onclick="moveMonth(-1)">‹</button>
+      <div class="mtitle" id="mtitle"></div>
+      <button class="btn small ghost" id="btnNext" onclick="moveMonth(1)">›</button>
+      <button class="btn small" onclick="goToday()">Bugün</button>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="cal">
+      <div class="dows"><div>Pzt</div><div>Sal</div><div>Çar</div><div>Per</div><div>Cum</div><div>Cmt</div><div>Paz</div></div>
+      <div class="days" id="days"></div>
+    </div>
+    <div class="sec" id="monListTitle"></div>
+    <div id="monList"></div>
+  </main>
+</div>
+<div id="modalWrap" class="hidden" onclick="if(event.target===this) closeModal()"><div class="modal" id="modalBox"></div></div>
+<div id="toast"></div>
+
+<script>
+const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+let session = null, TRAIN = null, TC = {};
+let curY = 0, curM = 0; // current view year/month(0-11)
+
+// ---------- auth ----------
+async function doLogin(){
+  const { data, error } = await sb.auth.signInWithPassword({
+    email: document.getElementById("email").value.trim(),
+    password: document.getElementById("pass").value,
+  });
+  if (error){ document.getElementById("loginMsg").textContent = "Giriş başarısız: " + error.message; return; }
+  session = data.session; enter();
+}
+async function doLogout(){ await sb.auth.signOut(); location.reload(); }
+async function boot(){
+  const now = new Date(); curY = now.getFullYear(); curM = now.getMonth();
+  document.getElementById("ver").textContent = APP_VERSION;
+  const { data } = await sb.auth.getSession();
+  if (data.session){ session = data.session; enter(); }
+}
+async function enter(){
+  document.getElementById("login").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  document.getElementById("who").textContent = session.user.email;
+  await refreshAll();
+}
+
+// ---------- proxy ----------
+async function api(payload){
+  const r = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/smartsheet-proxy`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + session.access_token,
+      "apikey": CONFIG.SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || j.message || ("HTTP " + r.status));
+  return j;
+}
+async function refreshAll(){
+  toast("Yükleniyor...");
+  try{
+    const td = await api({ action:"getSheet", sheetId: CONFIG.SHEET_TRAININGS });
+    if (!td.columns) throw new Error("Beklenmeyen yanıt: " + JSON.stringify(td).slice(0,200));
+    TRAIN = td; TC = {}; td.columns.forEach(c => TC[c.title] = c.id);
+    render(); toast("Güncellendi");
+  }catch(e){
+    const msg = esc(String(e && e.message ? e.message : e));
+    document.getElementById("days").innerHTML = "";
+    document.getElementById("monList").innerHTML =
+      `<div class="card" style="cursor:default"><h3>Bağlantı hatası</h3>
+       <p class="meta">Veri çekilemedi. Hata mesajı:</p>
+       <div class="pre">${msg}</div>
+       <p class="meta">Bu ekranın görüntüsünü Claude'a gönderin.</p>
+       <div class="foot"><button class="btn" onclick="refreshAll()">Tekrar dene</button></div></div>`;
+    toast("Hata: veri çekilemedi");
+  }
+}
+
+// ---------- helpers ----------
+function cell(row, colId){ const c = (row.cells||[]).find(x => x.columnId === colId); return c ? (c.displayValue ?? c.value ?? "") : ""; }
+function rawCell(row, colId){ const c = (row.cells||[]).find(x => x.columnId === colId); return c ? (c.value ?? null) : null; }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function fmtTL(n){ return isFinite(n) ? new Intl.NumberFormat("tr-TR").format(n) + " ₺" : "-"; }
+function esc(s){ return String(s??"").replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+function toast(m){ const el = document.getElementById("toast"); el.textContent = m; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"), 1800); }
+function openModal(html){ document.getElementById("modalBox").innerHTML = html; document.getElementById("modalWrap").classList.remove("hidden"); }
+function closeModal(){ document.getElementById("modalWrap").classList.add("hidden"); }
+
+const AYLAR = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
+const TYPES = [
+  ["roast","Roasting","--c-roast"],
+  ["bar","Barista","--c-bar"],
+  ["sens","Sensory","--c-sens"],
+  ["q","Q Grader","--c-q"],
+  ["other","Diğer","--c-other"],
+];
+function typeOf(name){
+  const n = String(name).toLowerCase();
+  if (n.includes("roasting")) return "roast";
+  if (n.includes("barista")) return "bar";
+  if (n.includes("sensory")) return "sens";
+  if (n.includes("q grader")) return "q";
+  return "other";
+}
+function typeColor(tp){ return getComputedStyle(document.documentElement).getPropertyValue({roast:"--c-roast",bar:"--c-bar",sens:"--c-sens",q:"--c-q",other:"--c-other"}[tp]).trim(); }
+function shortName(name){ return String(name).replace(/^SCA\s+/i,""); }
+function pad2(n){ return String(n).padStart(2,"0"); }
+function dstr(y,m,d){ return `${y}-${pad2(m+1)}-${pad2(d)}`; }
+
+function trainings(){
+  return (TRAIN.rows||[]).filter(r => {
+    const nm = cell(r, TC["Training"]);
+    return nm && nm !== "TOTAL" && cell(r, TC["Start date"]) && cell(r, TC["End date"]);
+  });
+}
+
+// ---------- render ----------
+function moveMonth(d){ curM += d; if (curM < 0){ curM = 11; curY--; } if (curM > 11){ curM = 0; curY++; } render(); }
+function goToday(){ const now = new Date(); curY = now.getFullYear(); curM = now.getMonth(); render(); }
+
+function render(){
+  document.getElementById("mtitle").textContent = `${AYLAR[curM]} ${curY}`;
+  document.getElementById("legend").innerHTML = TYPES.map(([tp,lbl,v]) =>
+    `<span class="lg"><i style="background:var(${v})"></i>${lbl}</span>`).join("");
+
+  const first = new Date(curY, curM, 1);
+  const dim = new Date(curY, curM + 1, 0).getDate();
+  const lead = (first.getDay() + 6) % 7; // Monday-first
+  const tNow = todayStr();
+  const monStart = dstr(curY, curM, 1), monEnd = dstr(curY, curM, dim);
+  const rows = trainings();
+
+  let html = "";
+  for (let i = 0; i < lead; i++) html += `<div class="day blank"></div>`;
+  for (let d = 1; d <= dim; d++){
+    const ds = dstr(curY, curM, d);
+    let bars = "";
+    rows.forEach(r => {
+      const s = cell(r, TC["Start date"]), e = cell(r, TC["End date"]);
+      if (s <= ds && ds <= e){
+        const nm = cell(r, TC["Training"]);
+        const tp = typeOf(nm);
+        const cls = (cell(r, TC["Status"]) === "Cancelled" ? " cx" : "") + (e < tNow ? " past" : "");
+        const label = (ds === s || d === 1) ? esc(shortName(nm)) : "&nbsp;";
+        bars += `<span class="tbar${cls}" style="background:var(--c-${tp})" onclick="openTr(${r.id})" title="${esc(nm)}">${label}</span>`;
+      }
+    });
+    html += `<div class="day${ds === tNow ? " today" : ""}"><span class="dn">${d}</span>${bars}</div>`;
+  }
+  document.getElementById("days").innerHTML = html;
+
+  const inMonth = rows.filter(r => cell(r, TC["Start date"]) <= monEnd && cell(r, TC["End date"]) >= monStart)
+    .sort((a,b) => cell(a, TC["Start date"]).localeCompare(cell(b, TC["Start date"])));
+  document.getElementById("monListTitle").textContent = `${AYLAR[curM]} eğitimleri (${inMonth.length})`;
+  document.getElementById("monList").innerHTML = inMonth.map(r => {
+    const nm = cell(r, TC["Training"]), tp = typeOf(nm), st = cell(r, TC["Status"]);
+    const reg = Number(rawCell(r, TC["Regstrd"]))||0, cap = Number(rawCell(r, TC["Cap"]))||0;
+    return `<div class="card" onclick="openTr(${r.id})">
+      <div class="row"><span class="dotc" style="background:var(--c-${tp})"></span>
+        <b>${esc(shortName(nm))}</b>
+        <span class="chip">${esc(cell(r, TC["Lang."]))}</span>
+        <span class="chip ${st==="Cancelled"?"warn":(st==="Delivered"?"ok":"acc")}">${esc(st)}</span>
+        <span class="chip">${reg}/${cap}</span></div>
+      <p class="meta" style="margin:6px 0 0">${esc(cell(r, TC["Start date"]))} → ${esc(cell(r, TC["End date"]))}</p>
+    </div>`;
+  }).join("") || `<div class="card" style="cursor:default"><p class="meta" style="margin:0">Bu ay eğitim yok.</p></div>`;
+}
+
+function openTr(rowId){
+  const r = (TRAIN.rows||[]).find(x => x.id === rowId);
+  if (!r) return;
+  const nm = cell(r, TC["Training"]), st = cell(r, TC["Status"]);
+  const reg = Number(rawCell(r, TC["Regstrd"]))||0, cap = Number(rawCell(r, TC["Cap"]))||0;
+  openModal(`
+    <h3>${esc(nm)}</h3>
+    <div class="row" style="margin-bottom:8px">
+      <span class="chip">${esc(cell(r, TC["Lang."]))}</span>
+      <span class="chip ${st==="Cancelled"?"warn":(st==="Delivered"?"ok":"acc")}">${esc(st)}</span>
+      <span class="chip">${reg}/${cap} koltuk</span>
+    </div>
+    <p class="meta">${esc(cell(r, TC["Start date"]))} → ${esc(cell(r, TC["End date"]))}</p>
+    <p class="meta">Fiyat: ${fmtTL(Number(rawCell(r, TC["Price TRY"])))} / koltuk · Gerçekleşen: ${fmtTL(Number(rawCell(r, TC["Realized Income"]))||0)}</p>
+    ${cell(r, TC["Notes"]) ? `<div class="pre">${esc(cell(r, TC["Notes"]))}</div>` : ""}
+    <div class="foot"><button class="btn ghost" onclick="closeModal()">Kapat</button></div>`);
+}
+
+boot();
+</script>
+</body>
+</html>
